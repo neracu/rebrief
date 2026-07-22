@@ -1,7 +1,13 @@
-Improve the utility's fault tolerance by handling edge cases in the core parsers (`rebrief/parsers/`).
+Create a `CONTRIBUTING.md` file in the root of the repository to make it easier for external developers to get started. Keep it concise and omit the “Code Style Guidelines” section.
 
-Requirements:
-1. **Empty repository / No files:** If the folder is empty, `StackParser` should not crash. A report should be generated with the message “Empty repository detected” in the Overview.
-2. **No Git / First initialization:** If there is no `.git` directory in the folder, or if the repository has been initialized (`git init`) but does not yet have any commits (fatal: your current branch... does not have any commits yet), `GitLogParser` should catch `subprocess.CalledProcessError`. Instead of crashing the script, log the following: “No commits detected yet. Repository is at point zero.” and return empty hotspots.
-3. **Monorepositories with multiple manifests:** If a project contains `go.mod`, `Cargo.toml`, `package.json`, and `requirements.txt` all at once (a complex monorepo), make sure that `ReportGenerator` neatly lists them separated by commas in the stack section, organized by paths (as in EcoVenue: `Frontend/package.json, backend/requirements.txt`), without overwriting the data.
-4. Write unit tests in `tests/` for each of these cases (include an empty folder and a folder without Git).
+Include the following sections:
+1. **Welcome Note:** A welcome message for contributors and the project’s philosophy (Keep it local, lightning-fast, and minimal dependencies).
+2. **How to Help:** A list of areas where the community can contribute (adding parsers for new languages/frameworks to `stack.py`, improving regular expressions for searching for secrets in `risks.py`, supporting new types of context files).
+3. **Local Development Setup:** A step-by-step guide to setting up your environment:
+   - Clone the repository.
+   - Create a virtual environment (`python -m venv .venv`).
+   - Install the package in edit mode along with dependencies for testing (`pip install -e . && pip install pytest`).
+4. **Running Tests:** Instructions for running tests using the `pytest` command.
+5. **Submitting a Pull Request:** Checklist before submitting a PR (verify that the tests pass and that the CLI successfully handles empty folders or folders without Git history).
+
+Write clearly, in a structured manner, and in a friendly tone.

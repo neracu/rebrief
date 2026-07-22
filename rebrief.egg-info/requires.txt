@@ -1,0 +1,5 @@
+click>=8.1
+colorama>=0.4
+
+[dev]
+pytest>=8.0

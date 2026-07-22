@@ -1,0 +1,15 @@
+.git/
+.pytest_cache/
+.poetry/
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
+.venv/
+venv/
+env/
+
+REBRIEF.md
+HANDOFF.md

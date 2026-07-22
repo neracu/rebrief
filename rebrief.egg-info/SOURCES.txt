@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+rebrief/__init__.py
+rebrief/cli.py
+rebrief.egg-info/PKG-INFO
+rebrief.egg-info/SOURCES.txt
+rebrief.egg-info/dependency_links.txt
+rebrief.egg-info/entry_points.txt
+rebrief.egg-info/requires.txt
+rebrief.egg-info/top_level.txt
+tests/test_cli.py

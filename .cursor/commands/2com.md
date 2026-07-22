@@ -1,10 +1,12 @@
-Implement a module to analyze the history of decisions based on Git logs.
-Create the file `rebrief/parsers/git_log.py` and the tests in `tests/test_git_log.py`.
+Create an integration test script `scripts/test_drive.py` to test the `rebrief` utility on real projects.
 
 Requirements:
-1. Create a `GitLogParser` class. If the `.git` folder is missing, the `parse()` method must safely return an empty structure without causing the CLI to crash.
-2. Use `subprocess` to call `git log --pretty=format:“%h|%an|%ad|%s” --date=short -n 100`.
-3. Filter out “noisy” commits from AI agents using regular expressions. Ignore commits whose message exactly matches or contains patterns such as: `r'^(fix typo|wip|update|checkpoint|save|fix|refactor|cleanup|minor|test)(.*)?$'` (case-insensitive).
-4. Keep only meaningful commits (the chronology of decisions), limiting the output to the last 25 entries.
-5. Extract the code churn (change density): run `git log --name-only --pretty=format:` for the last 30 days and count the top 5 most frequently modified files (files that the AI endlessly rewritten).
-6. Write tests (you can use mocks for `subprocess.run`).
+1. The script must automate the execution of `rebrief scan` for a specified list of paths to local repositories.
+2. Implement a function that takes a project path as an argument, runs the parsers, generates a report, and prints a brief quality metric to the console:
+   - How many risks were found.
+   - How many commits were filtered out.
+   - Whether the report file was successfully created.
+3. The script must contain an `if __name__ == ‘__main__’:` block that accepts command-line arguments via `sys.argv` (paths to the test folders) so that it can be run as follows: `python scripts/test_drive.py /path/to/old/project1 /path/to/ai/project2`.
+4. Use `colorama` to display the output in a visually appealing way (Green for SUCCESS / Red for FAIL) so you can visually monitor the utility’s stress test on messy code.
+
+The code should be utilitarian, simple, and kept separate from the main package.

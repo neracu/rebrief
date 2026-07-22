@@ -53,6 +53,8 @@ BLACKLIST_DIR_NAMES: frozenset[str] = frozenset(
         ".venv",
         "env",
         "site-packages",
+        ".next",
+        ".turbo",
     }
 )
 BLACKLIST_PATH_FRAGMENTS: tuple[str, ...] = (
@@ -65,6 +67,8 @@ BLACKLIST_PATH_FRAGMENTS: tuple[str, ...] = (
     "venv/",
     ".venv/",
     "env/",
+    ".next/",
+    ".turbo/",
 )
 MANIFEST_JSON_FILES: frozenset[str] = frozenset(
     {

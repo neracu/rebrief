@@ -178,6 +178,28 @@ def test_skips_non_manifest_json(tmp_path: Path) -> None:
     assert result["markers"] == []
 
 
+def test_skips_next_build_markers(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    next_dir = tmp_path / ".next" / "server"
+    next_dir.mkdir(parents=True)
+    (next_dir / "page.js").write_text("// TODO next build artifact\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
+def test_skips_turbo_cache_markers(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    turbo_dir = tmp_path / ".turbo" / "cache"
+    turbo_dir.mkdir(parents=True)
+    (turbo_dir / "output.js").write_text("// TODO turbo cache\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
 def test_scans_source_directories(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     source = tmp_path / "frontend" / "src"

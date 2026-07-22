@@ -55,6 +55,7 @@ class StackResult(TypedDict):
     manifests: list[str]
     frameworks: list[str]
     dependencies: list[str]
+    is_empty: bool
 
 
 class StackParser:
@@ -62,6 +63,7 @@ class StackParser:
         self._repo_path = Path(repo_path)
 
     def parse(self) -> StackResult:
+        is_empty = not any(True for _ in self._walk_files())
         manifest_paths = self._find_files(MANIFEST_FILES)
         signature_paths = self._find_files(tuple(FRAMEWORK_SIGNATURES.keys()))
         dependencies = self._extract_dependencies(manifest_paths)
@@ -83,6 +85,7 @@ class StackParser:
             "manifests": manifest_paths,
             "frameworks": frameworks,
             "dependencies": dependencies,
+            "is_empty": is_empty,
         }
 
     def _walk_files(self) -> Iterator[Path]:

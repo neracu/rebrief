@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from rebrief.parsers.git_log import GitLogParser
+from rebrief.parsers.git_log import POINT_ZERO_MESSAGE, GitLogParser
 
 
 def _mock_run_side_effect(log_stdout: str, churn_stdout: str) -> MagicMock:
@@ -18,7 +18,11 @@ def _mock_run_side_effect(log_stdout: str, churn_stdout: str) -> MagicMock:
 def test_missing_git_returns_empty(tmp_path: Path) -> None:
     result = GitLogParser(str(tmp_path)).parse()
 
-    assert result == {"commits": [], "top_modified_files": []}
+    assert result == {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": POINT_ZERO_MESSAGE,
+    }
 
 
 @patch("rebrief.parsers.git_log.subprocess.run")
@@ -42,6 +46,7 @@ def test_parses_meaningful_commits(mock_run: MagicMock, tmp_path: Path) -> None:
         "date": "2026-01-15",
         "subject": "Add authentication module",
     }
+    assert result["status_message"] is None
 
 
 @patch("rebrief.parsers.git_log.subprocess.run")
@@ -115,7 +120,11 @@ def test_git_failure_returns_empty(mock_run: MagicMock, tmp_path: Path) -> None:
 
     result = GitLogParser(str(tmp_path)).parse()
 
-    assert result == {"commits": [], "top_modified_files": []}
+    assert result == {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": POINT_ZERO_MESSAGE,
+    }
 
 
 @patch("rebrief.parsers.git_log.subprocess.run")
@@ -125,4 +134,18 @@ def test_git_nonzero_exit_returns_empty(mock_run: MagicMock, tmp_path: Path) -> 
 
     result = GitLogParser(str(tmp_path)).parse()
 
-    assert result == {"commits": [], "top_modified_files": []}
+    assert result == {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": POINT_ZERO_MESSAGE,
+    }
+
+
+def test_git_init_no_commits_returns_point_zero_message(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+
+    result = GitLogParser(str(tmp_path)).parse()
+
+    assert result["commits"] == []
+    assert result["top_modified_files"] == []
+    assert result["status_message"] == POINT_ZERO_MESSAGE

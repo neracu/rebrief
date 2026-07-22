@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from rebrief.core.reporter import ReportGenerator
-from rebrief.parsers.git_log import GitLogResult
+from rebrief.parsers.git_log import POINT_ZERO_MESSAGE, GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
@@ -18,6 +18,7 @@ def make_report_data() -> tuple[
         "manifests": ["pyproject.toml"],
         "frameworks": ["Django"],
         "dependencies": ["click>=8.1", "django==4.2"],
+        "is_empty": False,
     }
     rules: dict[str, RuleFileEntry] = {
         ".cursorrules": {"content": "# Rules", "lines_count": 12},
@@ -35,6 +36,7 @@ def make_report_data() -> tuple[
         "top_modified_files": [
             {"file": "src/app.py", "count": 8},
         ],
+        "status_message": None,
     }
     risks: RiskReport = {
         "missing_tests": True,
@@ -123,3 +125,77 @@ def test_write_report_default_filename(tmp_path: Path, monkeypatch) -> None:
     output_path = tmp_path / "REBRIEF.md"
     assert output_path.is_file()
     assert "# REBRIEF REPORT: demo-repo" in output_path.read_text(encoding="utf-8")
+
+
+def test_generate_empty_repo_overview(tmp_path: Path) -> None:
+    stack: StackResult = {
+        "languages": [],
+        "manifests": [],
+        "frameworks": [],
+        "dependencies": [],
+        "is_empty": True,
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": POINT_ZERO_MESSAGE,
+    }
+    risks: RiskReport = {
+        "missing_tests": True,
+        "markers": [],
+        "secrets": [],
+        "dependency_conflicts": [],
+    }
+    generator = ReportGenerator(str(tmp_path / "empty-repo"), stack, {}, git_log, risks)
+
+    report = generator.generate()
+
+    assert "Empty repository detected." in report
+
+
+def test_generate_point_zero_git_timeline(tmp_path: Path) -> None:
+    stack, rules, _, risks = make_report_data()
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": POINT_ZERO_MESSAGE,
+    }
+    generator = ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, risks)
+
+    report = generator.generate()
+
+    assert POINT_ZERO_MESSAGE in report
+
+
+def test_generate_monorepo_manifests(tmp_path: Path) -> None:
+    stack: StackResult = {
+        "languages": ["Go", "JavaScript/TypeScript", "Python", "Rust"],
+        "manifests": [
+            "Cargo.toml",
+            "backend/requirements.txt",
+            "frontend/package.json",
+            "go.mod",
+        ],
+        "frameworks": ["Django"],
+        "dependencies": ["django==4.2"],
+        "is_empty": False,
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": None,
+    }
+    risks: RiskReport = {
+        "missing_tests": False,
+        "markers": [],
+        "secrets": [],
+        "dependency_conflicts": [],
+    }
+    generator = ReportGenerator(str(tmp_path / "monorepo"), stack, {}, git_log, risks)
+
+    report = generator.generate()
+
+    assert (
+        "**Manifests:** Cargo.toml, backend/requirements.txt, frontend/package.json, go.mod"
+        in report
+    )

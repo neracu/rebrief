@@ -53,7 +53,9 @@ class ReportGenerator:
             + len(self._risks["markers"])
         )
 
-        if risk_count == 0:
+        if self._stack["is_empty"]:
+            impression = "Empty repository detected."
+        elif risk_count == 0:
             impression = (
                 f"This repository appears well-structured with "
                 f"{len(self._stack['languages'])} detected language(s) "
@@ -111,6 +113,8 @@ class ReportGenerator:
                     f"- `{commit['hash']}` ({commit['date']}) "
                     f"{commit['subject']} — {commit['author']}"
                 )
+        elif self._git_log.get("status_message"):
+            lines.append(f"- {self._git_log['status_message']}")
         else:
             lines.append("- No meaningful commits found.")
 

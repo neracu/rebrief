@@ -6,11 +6,12 @@ from rebrief.parsers.stack import StackParser
 def test_empty_repo(tmp_path: Path) -> None:
     result = StackParser(str(tmp_path)).parse()
 
-    assert set(result.keys()) == {"languages", "manifests", "frameworks", "dependencies"}
+    assert set(result.keys()) == {"languages", "manifests", "frameworks", "dependencies", "is_empty"}
     assert result["languages"] == []
     assert result["manifests"] == []
     assert result["frameworks"] == []
     assert result["dependencies"] == []
+    assert result["is_empty"] is True
 
 
 def test_python_requirements(tmp_path: Path) -> None:
@@ -25,6 +26,7 @@ def test_python_requirements(tmp_path: Path) -> None:
     assert result["manifests"] == ["requirements.txt"]
     assert "django" in result["dependencies"]
     assert "requests" in result["dependencies"]
+    assert result["is_empty"] is False
 
 
 def test_python_pyproject(tmp_path: Path) -> None:
@@ -205,3 +207,29 @@ def test_depth_limit_excludes_deep_files(tmp_path: Path) -> None:
 
     assert result["manifests"] == []
     assert "React" not in result["frameworks"]
+
+
+def test_monorepo_all_manifests(tmp_path: Path) -> None:
+    frontend = tmp_path / "frontend"
+    backend = tmp_path / "backend"
+    frontend.mkdir()
+    backend.mkdir()
+    (frontend / "package.json").write_text('{"dependencies": {}}', encoding="utf-8")
+    (backend / "requirements.txt").write_text("django==4.2\n", encoding="utf-8")
+    (tmp_path / "go.mod").write_text("module example.com/demo\n", encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "demo"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["manifests"] == [
+        "Cargo.toml",
+        "backend/requirements.txt",
+        "frontend/package.json",
+        "go.mod",
+    ]
+    assert result["languages"] == ["Go", "JavaScript/TypeScript", "Python", "Rust"]
+    assert result["is_empty"] is False
+    assert "Django" in result["frameworks"]

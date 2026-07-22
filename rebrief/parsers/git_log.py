@@ -14,6 +14,7 @@ MAX_COMMITS_FETCH = 100
 MAX_COMMITS_RETURN = 25
 MAX_CHURN_FILES = 5
 CHURN_SINCE = "30 days ago"
+POINT_ZERO_MESSAGE = "No commits detected yet. Repository is at point zero."
 
 
 class GitCommit(TypedDict):
@@ -31,12 +32,14 @@ class ModifiedFile(TypedDict):
 class GitLogResult(TypedDict):
     commits: list[GitCommit]
     top_modified_files: list[ModifiedFile]
+    status_message: str | None
 
 
-def _empty_result() -> GitLogResult:
+def _empty_result(status_message: str | None = None) -> GitLogResult:
     return {
         "commits": [],
         "top_modified_files": [],
+        "status_message": status_message,
     }
 
 
@@ -46,7 +49,7 @@ class GitLogParser:
 
     def parse(self) -> GitLogResult:
         if not (self._repo_path / ".git").exists():
-            return _empty_result()
+            return _empty_result(POINT_ZERO_MESSAGE)
 
         try:
             log_output = self._run_git(
@@ -66,7 +69,7 @@ class GitLogParser:
                 ]
             )
         except (FileNotFoundError, subprocess.CalledProcessError):
-            return _empty_result()
+            return _empty_result(POINT_ZERO_MESSAGE)
 
         commits = self._parse_commits(log_output)[:MAX_COMMITS_RETURN]
         top_modified_files = self._parse_churn(churn_output)
@@ -74,6 +77,7 @@ class GitLogParser:
         return {
             "commits": commits,
             "top_modified_files": top_modified_files,
+            "status_message": None,
         }
 
     def _run_git(self, args: list[str]) -> str:

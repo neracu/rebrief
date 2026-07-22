@@ -1,12 +1,13 @@
-Create an integration test script `scripts/test_drive.py` to test the `rebrief` utility on real projects.
+Fix RisksParser in `rebrief/parsers/risks.py`.
+Currently, it parses TODOs from third-party libraries and static files (jQuery, Bootstrap, Django Rest Framework backend/staticfiles), which clutters the report.
 
-Requirements:
-1. The script must automate the execution of `rebrief scan` for a specified list of paths to local repositories.
-2. Implement a function that takes a project path as an argument, runs the parsers, generates a report, and prints a brief quality metric to the console:
-   - How many risks were found.
-   - How many commits were filtered out.
-   - Whether the report file was successfully created.
-3. The script must contain an `if __name__ == ‘__main__’:` block that accepts command-line arguments via `sys.argv` (paths to the test folders) so that it can be run as follows: `python scripts/test_drive.py /path/to/old/project1 /path/to/ai/project2`.
-4. Use `colorama` to display the output in a visually appealing way (Green for SUCCESS / Red for FAIL) so you can visually monitor the utility’s stress test on messy code.
+What needs to be done:
+1. Add a strict blacklist of directories (and paths) that RisksParser must IGNORE during the build-time file scan.
+2. The blacklist should include:
+   - `node_modules/`, `bower_components/`
+   - `staticfiles/`, `static/vendor/`, `assets/vendor/`
+   - `venv/`, `.venv/`, `env/`, `site-packages/`
+   - Any files with the extensions `.min.js`, `.min.css`, `.map`, `.json` (except manifests), `.md` (to avoid parsing TODOs from README files).
+3. Check the file’s relative path: if it contains any of these patterns, skip it. We should look for TODOs and secrets ONLY in the source code written by the AI agent/founder (the `src/`, `app/`, `backend/`, `frontend/` folders, etc., excluding vendors).
 
-The code should be utilitarian, simple, and kept separate from the main package.
+Provide the updated code for `rebrief/parsers/risks.py`.

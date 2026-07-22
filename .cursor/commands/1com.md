@@ -1,35 +1,10 @@
-Implement the module for generating the final report.
-Create the file `rebrief/core/reporter.py` and the tests in `tests/test_reporter.py`.
+Fix StackParser in `rebrief/parsers/stack.py`.
+Currently, it does not resolve the stack if configuration files are located in nested folders (for example, in subfolders such as `frontend/package.json` or `backend/requirements.txt`).
 
-Requirements:
-1. Create a `ReportGenerator` class that accepts aggregated data from all Phase 1 parsers (StackParser, RulesParser, GitLogParser, RisksParser).
-2. The `generate()` method must assemble the data into a single Markdown string strictly following this structure:
+What to do:
+1. Update the search for manifest files (`package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`) and signature files (`next.config.js`, `manage.py`, `vite.config.js`). Don’t just search for them in the root (`repo_path`); instead, recursively traverse the directory tree (for example, using `os.walk`), but with a depth limit (`max_depth = 3`) to avoid going too deep into system folders.
+2. Exclude the following folders from the search: `node_modules`, `venv`, `.venv`, `env`, `dist`, `build`, `.git`.
+3. If `react` is found inside `package.json` (regardless of its location), add “React” to `frameworks`; if `next` is found, add “Next.js”.
+4. If `manage.py` is found or `django` is present in `requirements.txt`, add “Django” to the frameworks. If `djangorestframework` is present, add “Django REST Framework”.
 
-   # REBRIEF REPORT: [Repository Folder Name]
-
-   ## 1. Project Overview (Executive Summary)
-   - Overall impression of the repository.
-   - Presence of AI instructions (.cursorrules, CLAUDE.md, etc.) with a summary (size, files found).
-
-   ## 2. Technology Stack and Dependencies
-   - Detected languages and frameworks.
-   - Found manifest configuration files.
-   - List of key dependencies.
-
-   ## 3. Solution Timeline (Git History)
-   - List of recent meaningful commits (without noise).
-   - “Hotspots (Change Density)” section: the top 5 files that were modified most frequently (with the number of changes indicated).
-
-   ## 4. Risk Map (AI Debt & Security)
-   - Categorize risks by severity level:
-     - [CRITICAL]: Hard-coded secrets/tokens.
-     - [WARNING]: Missing tests (tests/ folder), duplicate dependencies.
-     - [INFO]: Found TODO/FIXME/HACK entries (with file and line number).
-
-   ## 5. Developer Checklist (“Where to Start”)
-   - Automatically generated step-by-step checklist based on risks and the tech stack (for example: 1. Find hardcoded keys in file X. 2. Set up the environment for framework Y. 3. Cover critical areas with tests).
-
-3. The `write_report(output_path)` method must safely write Markdown to a file (by default, `REBRIEF.md`).
-4. Write unit tests with mock parser data to verify the correct formatting of Markdown and file writing.
-
-Write clean code; use f-strings to build Markdown (without using external templating engines like Jinja2 to keep the package lightweight).
+Generate the updated code for `rebrief/parsers/stack.py`.

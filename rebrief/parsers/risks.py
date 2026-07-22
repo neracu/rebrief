@@ -40,11 +40,41 @@ DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset(
     {
         ".git",
         "__pycache__",
-        ".venv",
-        "venv",
-        "node_modules",
+        "build",
+        "dist",
     }
 )
+BLACKLIST_DIR_NAMES: frozenset[str] = frozenset(
+    {
+        "node_modules",
+        "bower_components",
+        "staticfiles",
+        "venv",
+        ".venv",
+        "env",
+        "site-packages",
+    }
+)
+BLACKLIST_PATH_FRAGMENTS: tuple[str, ...] = (
+    "node_modules/",
+    "bower_components/",
+    "staticfiles/",
+    "static/vendor/",
+    "assets/vendor/",
+    "site-packages/",
+    "venv/",
+    ".venv/",
+    "env/",
+)
+MANIFEST_JSON_FILES: frozenset[str] = frozenset(
+    {
+        "package.json",
+        "composer.json",
+        "package-lock.json",
+    }
+)
+SKIP_EXTENSIONS: frozenset[str] = frozenset({".map", ".md"})
+SKIP_NAME_SUFFIXES: tuple[str, ...] = (".min.js", ".min.css")
 IGNORE_FILES: tuple[str, ...] = (".gitignore", ".cursorignore")
 
 
@@ -137,6 +167,36 @@ class RisksParser:
 
         return False
 
+    def _normalize_relative(self, path: str) -> str:
+        return path.replace("\\", "/")
+
+    def _is_blacklisted_path(self, relative: str) -> bool:
+        normalized = self._normalize_relative(relative)
+        parts = [part for part in normalized.split("/") if part]
+
+        if any(part in BLACKLIST_DIR_NAMES for part in parts):
+            return True
+
+        prefixed = f"{normalized}/" if normalized else ""
+        return any(fragment in prefixed for fragment in BLACKLIST_PATH_FRAGMENTS)
+
+    def _is_skippable_file(self, relative: str, filename: str) -> bool:
+        if self._is_blacklisted_path(relative):
+            return True
+
+        lowered_name = filename.lower()
+        if any(lowered_name.endswith(suffix) for suffix in SKIP_NAME_SUFFIXES):
+            return True
+
+        suffix = Path(filename).suffix.lower()
+        if suffix in SKIP_EXTENSIONS:
+            return True
+
+        if suffix == ".json" and filename not in MANIFEST_JSON_FILES:
+            return True
+
+        return False
+
     def _iter_text_files(self) -> Iterator[Path]:
         for root, dirs, files in os.walk(self._repo_path):
             root_path = Path(root)
@@ -148,6 +208,7 @@ class RisksParser:
                 directory
                 for directory in dirs
                 if directory not in DEFAULT_IGNORE_DIRS
+                and directory not in BLACKLIST_DIR_NAMES
                 and not self._is_ignored(
                     f"{relative_root}/{directory}".strip("/"),
                     is_dir=True,
@@ -159,6 +220,8 @@ class RisksParser:
                 relative_file = file_path.relative_to(self._repo_path).as_posix()
 
                 if self._is_ignored(relative_file, is_dir=False):
+                    continue
+                if self._is_skippable_file(relative_file, filename):
                     continue
                 if self._is_binary(file_path):
                     continue

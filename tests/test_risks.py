@@ -120,3 +120,72 @@ def test_clean_repo_minimal_risks(tmp_path: Path) -> None:
     assert result["markers"] == []
     assert result["secrets"] == []
     assert result["dependency_conflicts"] == []
+
+
+def test_skips_node_modules_markers(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    node_modules = tmp_path / "node_modules" / "lib"
+    node_modules.mkdir(parents=True)
+    (node_modules / "index.js").write_text("// TODO vendor noise\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
+def test_skips_staticfiles_markers(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    staticfiles = tmp_path / "backend" / "staticfiles"
+    staticfiles.mkdir(parents=True)
+    (staticfiles / "admin.js").write_text("// TODO admin asset\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
+def test_skips_static_vendor_markers(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    vendor = tmp_path / "static" / "vendor"
+    vendor.mkdir(parents=True)
+    (vendor / "jquery.js").write_text("// TODO jquery\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
+def test_skips_min_js_and_md(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.min.js").write_text("// TODO minified\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("# TODO readme\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
+def test_skips_non_manifest_json(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "config.json").write_text('{"note": "TODO fix config"}\n', encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+
+
+def test_scans_source_directories(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    source = tmp_path / "frontend" / "src"
+    source.mkdir(parents=True)
+    (source / "app.py").write_text("def run():\n    pass  # TODO ship feature\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == [
+        {"file": "frontend/src/app.py", "line": 2, "marker": "TODO"}
+    ]

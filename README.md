@@ -7,17 +7,42 @@ Scan a repository to surface structural gaps, risky patterns, and missing contex
 ## Installation
 
 ```bash
-pip install -e .
-```
-
-For development dependencies (pytest):
-
-```bash
-pip install -e ".[dev]"
+pip install rebrief
 ```
 
 ## Usage
 
 ```bash
+rebrief scan /path/to/repo
+rebrief scan . -o REBRIEF.md
 rebrief --help
+```
+
+## Development
+
+Install in editable mode with test dependencies:
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+Build and validate distributions before publishing:
+
+```bash
+bash scripts/publish.sh
+```
+
+On Windows PowerShell:
+
+```powershell
+.\scripts\publish.ps1
+```
+
+Or install publish tooling explicitly:
+
+```bash
+pip install -e ".[publish]"
+python -m build
+python -m twine check dist/*
 ```

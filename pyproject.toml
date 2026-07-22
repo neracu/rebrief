@@ -19,7 +19,9 @@ rebrief = "rebrief.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+publish = ["build>=1.0", "twine>=5.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rebrief*"]
+exclude = ["tests*"]

@@ -3,3 +3,7 @@ rich>=13.0
 
 [dev]
 pytest>=8.0
+
+[publish]
+build>=1.0
+twine>=5.0

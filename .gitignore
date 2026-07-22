@@ -13,6 +13,17 @@ build/
 dist/
 *.egg-info/
 .eggs/
+.pypirc
+
+# Secrets / credentials
+.env
+.env.*
+*.pem
+credentials.json
+secrets.json
+
+# Debug logs
+debug-*.log
 
 # Test / tooling caches
 .pytest_cache/

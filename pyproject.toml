@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rebrief"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI utility for locally auditing AI-generated repositories and generating REBRIEF.md handoff reports"
 readme = "README.md"
 license = { text = "MIT" }

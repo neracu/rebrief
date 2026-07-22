@@ -28,4 +28,7 @@ def test_scan(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "Scanning repository" in result.output
+    assert "Languages found" in result.output
+    assert "Risks identified" in result.output
+    assert "Scan complete" in result.output
     assert (tmp_path / "REBRIEF.md").is_file()

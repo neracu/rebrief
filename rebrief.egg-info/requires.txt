@@ -1,5 +1,5 @@
 click>=8.1
-colorama>=0.4
+rich>=13.0
 
 [dev]
 pytest>=8.0

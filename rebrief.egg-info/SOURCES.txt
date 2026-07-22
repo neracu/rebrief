@@ -9,4 +9,16 @@ rebrief.egg-info/dependency_links.txt
 rebrief.egg-info/entry_points.txt
 rebrief.egg-info/requires.txt
 rebrief.egg-info/top_level.txt
+rebrief/core/__init__.py
+rebrief/core/reporter.py
+rebrief/parsers/__init__.py
+rebrief/parsers/git_log.py
+rebrief/parsers/risks.py
+rebrief/parsers/rules.py
+rebrief/parsers/stack.py
 tests/test_cli.py
+tests/test_git_log.py
+tests/test_reporter.py
+tests/test_risks.py
+tests/test_rules.py
+tests/test_stack.py

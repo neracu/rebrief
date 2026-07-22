@@ -7,7 +7,7 @@ Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: click>=8.1
-Requires-Dist: colorama>=0.4
+Requires-Dist: rich>=13.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
 Dynamic: license-file

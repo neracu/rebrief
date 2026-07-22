@@ -1,27 +1,11 @@
-Create the basic structure for the open-source CLI tool “rebrief.”
+Implement a module for collecting context and instructions for AI agents.
+Create the file `rebrief/parsers/rules.py` and tests in `tests/test_rules.py`.
 
-The tool is designed to scan repositories (code) and generate handoff documents for developers.
-
-Follow these steps:
-
-1. Create a LICENSE file containing the text of the standard MIT license (specify the current year, 2026).
-
-2. Create the following directory and file structure:
-   ├── rebrief/
-   │   ├── __init__.py
-   │   └── cli.py
-   ├── tests/
-   │   ├── __init__.py
-   │   └── test_cli.py
-   ├── README.md
-   └── pyproject.toml
-
-3. Populate `pyproject.toml` with a modern project description. Use a `build-system` based on setuptools or hatch. Specify:
-   - Project name: rebrief
-   - License: MIT
-   - Dependencies: click (or typer), colorama
-   - The [project.scripts] section so that the `rebrief` command points to the main function in rebrief.cli:main.
-
-4. Write a concise README.md describing the concept: “rebrief — a CLI utility for locally auditing AI-generated repositories and automatically generating a REBRIEF.md report for active developers.” Add a section with instructions for local installation using `pip install -e .`.
-
-Write only clean files without any extra text, strictly following the structure.
+Requirements:
+1. Create a `RulesParser` class.
+2. Scan the root of the repository for the following files (case-insensitive): `.cursorrules`, `CLAUDE.md`, `AGENTS.md`, `.claudecode`, `README.md`.
+3. If a file is found:
+   - Read its contents (handle encoding errors; use `errors=‘ignore’`).
+   - Extract a brief summary: the file size in lines and the first 5–10 lines as a preview (for README), or the full text (for small configuration files like `.cursorrules`, if they are fewer than 200 lines).
+4. The `parse()` method must return a data structure: `{“filename”: {‘content’: “...”, “lines_count”: X}}`.
+5. Write unit tests to verify that existing files are read correctly and missing files are ignored.

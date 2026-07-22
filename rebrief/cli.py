@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import click
@@ -12,6 +13,28 @@ from rebrief.parsers.risks import RiskReport, RisksParser
 from rebrief.parsers.rules import RulesParser
 from rebrief.parsers.stack import StackParser
 
+
+def _configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
+def _scan_prefix() -> str:
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        "🔍".encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return "> "
+    return "🔍 "
+
+
+_configure_stdio()
 console = Console()
 
 
@@ -32,7 +55,7 @@ def main() -> None:
 @click.argument("repo_path", type=click.Path(exists=True, file_okay=False), default=".")
 @click.option("--output", "-o", default="REBRIEF.md", show_default=True, help="Output report filename.")
 def scan(repo_path: str, output: str) -> None:
-    console.print("🔍 [bold cyan]Scanning repository...[/bold cyan]")
+    console.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
     console.print(f"  [dim]Path:[/dim]   {repo_path}")
     console.print(f"  [dim]Output:[/dim] {output}")
 

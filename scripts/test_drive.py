@@ -55,7 +55,14 @@ def _run_rebrief_scan(project_path: str, output: str) -> None:
 
     for command in commands:
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
             return
         except FileNotFoundError as exc:
             last_error = exc

@@ -7,6 +7,16 @@
 
 A local CLI that scans any codebase and produces a structured `REBRIEF.md` report in ~30 seconds - stack, context, history, risks, and a where-to-start checklist.
 
+## Demo
+
+```bash
+rebrief scan .
+```
+
+![rebrief scan demo](assets/demo.gif)
+
+Point it at any local repo. rebrief walks the stack, rules, git history, and risks, then writes `REBRIEF.md` in the project root.
+
 ---
 
 ## The Pain
@@ -28,14 +38,6 @@ You join a new project - after an outsourcing handoff, a freelancer exit, or yea
 rebrief scan .
 # → REBRIEF.md
 ```
-
----
-
-## Demo
-
-> **Demo coming soon** - GIF or Asciinema recording of `rebrief scan .` showing Rich terminal spinners (stack, rules, git, risks) and the green "Scan complete" summary panel.
->
-> `<!-- Replace with demo.gif or asciinema link -->`
 
 ---
 

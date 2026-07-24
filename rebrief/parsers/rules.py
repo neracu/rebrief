@@ -13,6 +13,8 @@ RULE_FILES: tuple[str, ...] = (
 PREVIEW_LINE_COUNT = 10
 FULL_CONTENT_LINE_LIMIT = 200
 README_FILENAME = "README.md"
+CURSOR_RULES_DIR = Path(".cursor") / "rules"
+MDC_SUFFIX = ".mdc"
 
 
 class RuleFileEntry(TypedDict):
@@ -49,7 +51,24 @@ class RulesParser:
             if path is not None:
                 found[canonical_name] = path
 
+        found.update(self._find_cursor_mdc_rules())
         return found
+
+    def _find_cursor_mdc_rules(self) -> dict[str, Path]:
+        cursor_rules_dir = self._repo_path / CURSOR_RULES_DIR
+        if not cursor_rules_dir.is_dir():
+            return {}
+
+        found: dict[str, Path] = {}
+        for path in cursor_rules_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.casefold() != MDC_SUFFIX:
+                continue
+            key = path.relative_to(self._repo_path).as_posix()
+            found[key] = path
+
+        return dict(sorted(found.items()))
 
     def _read_file(self, path: Path) -> str:
         try:

@@ -66,3 +66,33 @@ def test_encoding_errors_ignored(tmp_path: Path) -> None:
 
     assert "AGENTS.md" in result
     assert result["AGENTS.md"]["lines_count"] >= 1
+
+
+def test_cursor_rules_mdc_files_discovered(tmp_path: Path) -> None:
+    rules_dir = tmp_path / ".cursor" / "rules"
+    rules_dir.mkdir(parents=True)
+    foo_content = "# Python rules\nBe strict.\n"
+    (rules_dir / "foo.mdc").write_text(foo_content, encoding="utf-8")
+    nested_dir = rules_dir / "nested"
+    nested_dir.mkdir()
+    (nested_dir / "bar.mdc").write_text("# Testing\n", encoding="utf-8")
+    (tmp_path / ".cursorrules").write_text("root rules\n", encoding="utf-8")
+
+    result = RulesParser(str(tmp_path)).parse()
+
+    assert set(result.keys()) == {
+        ".cursorrules",
+        ".cursor/rules/foo.mdc",
+        ".cursor/rules/nested/bar.mdc",
+    }
+    assert result[".cursor/rules/foo.mdc"]["content"] == foo_content
+    assert result[".cursor/rules/foo.mdc"]["lines_count"] == 2
+    assert result[".cursor/rules/nested/bar.mdc"]["lines_count"] == 1
+
+
+def test_cursor_rules_mdc_missing_dir(tmp_path: Path) -> None:
+    (tmp_path / ".cursorrules").write_text("rules\n", encoding="utf-8")
+
+    result = RulesParser(str(tmp_path)).parse()
+
+    assert set(result.keys()) == {".cursorrules"}

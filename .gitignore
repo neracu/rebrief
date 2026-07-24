@@ -37,6 +37,7 @@ htmlcov/
 
 # IDE
 .cursor/
+.cursor/commands/
 .idea/
 .vscode/
 *.swp

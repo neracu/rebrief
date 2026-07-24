@@ -1,13 +1,1 @@
-Create a `CONTRIBUTING.md` file in the root of the repository to make it easier for external developers to get started. Keep it concise and omit the “Code Style Guidelines” section.
-
-Include the following sections:
-1. **Welcome Note:** A welcome message for contributors and the project’s philosophy (Keep it local, lightning-fast, and minimal dependencies).
-2. **How to Help:** A list of areas where the community can contribute (adding parsers for new languages/frameworks to `stack.py`, improving regular expressions for searching for secrets in `risks.py`, supporting new types of context files).
-3. **Local Development Setup:** A step-by-step guide to setting up your environment:
-   - Clone the repository.
-   - Create a virtual environment (`python -m venv .venv`).
-   - Install the package in edit mode along with dependencies for testing (`pip install -e . && pip install pytest`).
-4. **Running Tests:** Instructions for running tests using the `pytest` command.
-5. **Submitting a Pull Request:** Checklist before submitting a PR (verify that the tests pass and that the CLI successfully handles empty folders or folders without Git history).
-
-Write clearly, in a structured manner, and in a friendly tone.
+The git history filtering module (Solution Timeline) currently filters out only commits that are clearly junk (wip, fix typo, etc.). Add a heuristic to collapse a series of nearly identical commits: if several consecutive commits differ only by a number or suffix at the end of the message (e.g., “redesign graph 8.0,” “redesign graph 7.0,” “redesign graph 6.0”), merge them into a single timeline entry like “redesign graph: N iterations (date range)” instead of N separate entries. Keep the dates of the earliest and latest commits in the series. Add a unit test for this case.

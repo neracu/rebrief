@@ -13,17 +13,19 @@ Thank you for considering a contribution. **rebrief** is a local CLI that scans 
 Areas where community contributions have the most impact:
 
 - **Languages & frameworks** - add parsers for new stacks in `rebrief/parsers/stack.py` (`MANIFEST_FILES`, `FRAMEWORK_SIGNATURES`, dependency heuristics).
-- **Secret detection** - improve regular expressions and patterns in `rebrief/parsers/risks.py` (`SECRET_RE`, TODO/FIXME markers).
+- **Secret detection** - improve heuristics in `rebrief/parsers/risks.py` (`KNOWN_SECRET_FORMAT_RE`, `CREDENTIAL_NAME_WORDS`, `_line_has_secret()`, TODO/FIXME markers).
 - **Context files** - support new project context filenames in `rebrief/parsers/rules.py` (`RULE_FILES`).
 
 Include matching tests in `tests/` for any parser changes.
+
+`tests/fixtures/secrets/` contains **labeled fake credentials** used only for scanner regression tests (not real secrets).
 
 ## Local Development Setup
 
 **Requirements:** Python >= 3.10
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/neracu/rebrief
 cd rebrief
 python -m venv .venv
 ```
@@ -36,7 +38,7 @@ Activate the virtual environment:
 Install the package in editable mode with test dependencies:
 
 ```bash
-pip install -e . && pip install pytest
+pip install -e ".[dev]"
 ```
 
 ## Running Tests

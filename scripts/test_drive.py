@@ -7,9 +7,9 @@ from pathlib import Path
 import colorama
 from colorama import Fore, Style
 
+from rebrief.cli import _count_risks
 from rebrief.parsers.git_log import MAX_COMMITS_FETCH, GitLogParser
 from rebrief.parsers.risks import RisksParser
-from rebrief.parsers.rules import RulesParser
 from rebrief.parsers.stack import StackParser
 
 
@@ -36,18 +36,10 @@ def _count_raw_commits(repo_path: Path) -> int:
     return len([line for line in result.stdout.splitlines() if line.strip()])
 
 
-def _count_risks(risks: dict) -> int:
-    return (
-        len(risks["secrets"])
-        + len(risks["markers"])
-        + len(risks["dependency_conflicts"])
-        + (1 if risks["missing_tests"] else 0)
-    )
-
-
 def _run_rebrief_scan(project_path: str, output: str) -> None:
     commands = [
         ["rebrief", "scan", project_path, "-o", output],
+        [sys.executable, "-m", "rebrief", "scan", project_path, "-o", output],
         [sys.executable, "-m", "rebrief.cli", "scan", project_path, "-o", output],
     ]
 
@@ -103,7 +95,6 @@ def run_project(project_path: str, output: str = "REBRIEF.md") -> bool:
         return False
 
     stack = StackParser(str(repo_path)).parse()
-    RulesParser(str(repo_path)).parse()
     git_log = GitLogParser(str(repo_path)).parse()
     risks = RisksParser(str(repo_path), dependencies=stack["dependencies"]).parse()
 

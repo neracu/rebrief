@@ -129,19 +129,19 @@ def test_secret_fixture_scan() -> None:
             "revision field outside migration path is not a credential name",
         ),
         (
-            'STORAGE_KEY = "vast:last-project:v2"',
+            'STORAGE_KEY = "app:last-project:v2"',
             "src/lib/storage.ts",
             False,
             "namespaced localStorage key with version suffix",
         ),
         (
-            'STORAGE_KEY = "vast:pinned-projects:v1"',
+            'STORAGE_KEY = "app:pinned-projects:v1"',
             "src/lib/storage.ts",
             False,
             "namespaced localStorage key for pinned projects",
         ),
         (
-            'const STORAGE_KEY = "vast:last-project:v2"',
+            'const STORAGE_KEY = "app:last-project:v2"',
             "src/lib/storage.ts",
             False,
             "const-prefixed namespaced storage key",

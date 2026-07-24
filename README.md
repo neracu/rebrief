@@ -2,7 +2,6 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/rebrief.svg)](https://pypi.org/project/rebrief/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Downloads](https://static.pepy.tech/badge/rebrief)](https://pepy.tech/project/rebrief)
 
 **Instantly turn any unfamiliar repository into a clean developer handoff dossier.**
 

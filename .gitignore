@@ -42,6 +42,8 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+.cursorrules
+.cursorignore
 
 # OS
 .DS_Store

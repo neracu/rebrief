@@ -10,6 +10,10 @@ NOISY_COMMIT_RE = re.compile(
     r"^(fix typo|wip|update|checkpoint|save|fix|refactor|cleanup|minor|test)(.*)?$",
     re.IGNORECASE,
 )
+ITERATION_SUFFIX_RE = re.compile(
+    r"^(?P<base>.+?)\s+(?P<suffix>\d+(?:\.\d+)*|\w+)$",
+    re.IGNORECASE,
+)
 MAX_COMMITS_FETCH = 100
 MAX_COMMITS_RETURN = 25
 MAX_CHURN_FILES = 5
@@ -71,7 +75,9 @@ class GitLogParser:
         except (FileNotFoundError, subprocess.CalledProcessError):
             return _empty_result(POINT_ZERO_MESSAGE)
 
-        commits = self._parse_commits(log_output)[:MAX_COMMITS_RETURN]
+        commits = self._collapse_iteration_series(
+            self._parse_commits(log_output)
+        )[:MAX_COMMITS_RETURN]
         top_modified_files = self._parse_churn(churn_output)
 
         return {
@@ -119,6 +125,49 @@ class GitLogParser:
 
     def _is_noisy(self, subject: str) -> bool:
         return NOISY_COMMIT_RE.match(subject) is not None
+
+    def _split_iteration_subject(self, subject: str) -> tuple[str, str] | None:
+        match = ITERATION_SUFFIX_RE.match(subject)
+        if match is None:
+            return None
+        return match.group("base"), match.group("suffix")
+
+    def _collapse_iteration_series(self, commits: list[GitCommit]) -> list[GitCommit]:
+        if not commits:
+            return []
+
+        result: list[GitCommit] = []
+        index = 0
+        while index < len(commits):
+            parsed = self._split_iteration_subject(commits[index]["subject"])
+            if parsed is None:
+                result.append(commits[index])
+                index += 1
+                continue
+
+            base, _ = parsed
+            end = index + 1
+            while end < len(commits):
+                next_parsed = self._split_iteration_subject(commits[end]["subject"])
+                if next_parsed is None or next_parsed[0].casefold() != base.casefold():
+                    break
+                end += 1
+
+            group = commits[index:end]
+            if len(group) >= 2:
+                result.append(
+                    {
+                        "hash": group[0]["hash"],
+                        "author": group[0]["author"],
+                        "date": f"{group[-1]['date']} — {group[0]['date']}",
+                        "subject": f"{base}: {len(group)} iterations",
+                    }
+                )
+            else:
+                result.append(commits[index])
+            index = end
+
+        return result
 
     def _parse_churn(self, raw: str) -> list[ModifiedFile]:
         counts = Counter(

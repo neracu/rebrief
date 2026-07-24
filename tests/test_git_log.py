@@ -69,10 +69,40 @@ def test_filters_noisy_commits(mock_run: MagicMock, tmp_path: Path) -> None:
 
 
 @patch("rebrief.parsers.git_log.subprocess.run")
+def test_collapses_iteration_series(mock_run: MagicMock, tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    log_stdout = "\n".join(
+        [
+            "aaa1111|Alice|2026-01-15|redesign graph 8.0",
+            "bbb2222|Alice|2026-01-12|redesign graph 7.0",
+            "ccc3333|Alice|2026-01-10|redesign graph 6.0",
+            "ddd4444|Bob|2026-01-08|Add payment gateway",
+        ]
+    )
+    mock_run.side_effect = _mock_run_side_effect(log_stdout, "")
+
+    result = GitLogParser(str(tmp_path)).parse()
+
+    assert len(result["commits"]) == 2
+    assert result["commits"][0] == {
+        "hash": "aaa1111",
+        "author": "Alice",
+        "date": "2026-01-10 — 2026-01-15",
+        "subject": "redesign graph: 3 iterations",
+    }
+    assert result["commits"][1] == {
+        "hash": "ddd4444",
+        "author": "Bob",
+        "date": "2026-01-08",
+        "subject": "Add payment gateway",
+    }
+
+
+@patch("rebrief.parsers.git_log.subprocess.run")
 def test_limits_to_25_commits(mock_run: MagicMock, tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     log_stdout = "\n".join(
-        f"{index:07d}|Author|2026-01-01|Meaningful commit {index}"
+        f"{index:07d}|Author|2026-01-01|Meaningful commit {index} delivered"
         for index in range(40)
     )
     mock_run.side_effect = _mock_run_side_effect(log_stdout, "")

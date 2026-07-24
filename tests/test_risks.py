@@ -38,7 +38,7 @@ def test_detects_markers(tmp_path: Path) -> None:
 def test_detects_secrets(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "config.py").write_text(
-        'api_key = "abcdefghijklmnop"\n',
+        'api_key = "aB3xQ9mK7pL2wZ8vN4tR"\n',
         encoding="utf-8",
     )
 

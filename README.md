@@ -106,6 +106,18 @@ Scan the current directory (default) or any local path. Output defaults to `REBR
 
 ---
 
+## AI Prompting
+
+After generating `REBRIEF.md`, point your AI assistant at it before diving into the codebase. In Cursor or Claude, use this prompt:
+
+```text
+Read REBRIEF.md before starting to understand the project's architecture and hotspots.
+```
+
+This gives the model a structured overview of the stack, risks, and where to start - so you spend less time re-explaining the repo on every session.
+
+---
+
 ## License
 
 MIT

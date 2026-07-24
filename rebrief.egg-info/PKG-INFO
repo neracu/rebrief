@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: rebrief
-Version: 0.1.1
+Version: 0.1.2
 Summary: CLI utility for locally auditing AI-generated repositories and generating REBRIEF.md handoff reports
 License: MIT
 Requires-Python: >=3.10

@@ -10,9 +10,17 @@ from typing import Iterator, TypedDict
 
 TEST_DIRS: tuple[str, ...] = ("tests", "test", "__tests__")
 MARKER_RE = re.compile(r"\b(TODO|FIXME|HACK|BUG)\b")
-SECRET_RE = re.compile(
-    r'(?:secret|password|api_key|token|passwd)\s*=\s*["\'][a-zA-Z0-9_\-]{16,}["\']',
-    re.IGNORECASE,
+SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r'(?:secret|password|api_key|token|passwd)\s*=\s*["\'][a-zA-Z0-9_\-]{8,}["\']',
+        re.IGNORECASE,
+    ),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"sk-[a-zA-Z0-9_\-]{20,}"),
+    re.compile(
+        r"(?:export\s+)?(?:(?:[A-Z][A-Z0-9_]*_)?(?:KEY|TOKEN|SECRET|PASSWORD)|[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))\w*\s*=\s*[^\s#]{8,}",
+        re.IGNORECASE,
+    ),
 )
 _REQUIREMENT_SPEC_RE = re.compile(
     r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$"
@@ -267,10 +275,13 @@ class RisksParser:
                     }
                 )
 
-            if SECRET_RE.search(line):
+            if self._line_has_secret(line):
                 secrets.append({"file": relative, "line": line_number})
 
         return markers, secrets
+
+    def _line_has_secret(self, line: str) -> bool:
+        return any(pattern.search(line) for pattern in SECRET_PATTERNS)
 
     def _check_dependency_conflicts(self) -> list[DependencyConflict]:
         if self._dependencies is not None and not self._has_dependency_manifests():

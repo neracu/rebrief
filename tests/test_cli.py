@@ -3,6 +3,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from rebrief.cli import main
+from rebrief.core.ignore import REBRIEFIGNORE_FILENAME
 
 
 def test_main_help() -> None:
@@ -16,7 +17,40 @@ def test_main_version() -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
     assert result.exit_code == 0
-    assert "0.1.2" in result.output
+    assert "0.1.4" in result.output
+
+
+def test_init_creates_rebriefignore(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["init", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "Created" in result.output
+    assert (tmp_path / REBRIEFIGNORE_FILENAME).is_file()
+
+
+def test_init_existing_file_no_overwrite(tmp_path: Path) -> None:
+    ignore_path = tmp_path / REBRIEFIGNORE_FILENAME
+    ignore_path.write_text("custom/\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["init", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "already exists" in result.output
+    assert ignore_path.read_text(encoding="utf-8") == "custom/\n"
+
+
+def test_scan_creates_rebriefignore_on_first_run(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert (tmp_path / REBRIEFIGNORE_FILENAME).is_file()
+    assert "Created .rebriefignore" in result.output
 
 
 def test_scan(tmp_path: Path) -> None:
@@ -39,8 +73,10 @@ def test_scan_empty_folder(tmp_path: Path) -> None:
     result = runner.invoke(main, ["scan", str(tmp_path)])
 
     assert result.exit_code == 0
+    assert (tmp_path / REBRIEFIGNORE_FILENAME).is_file()
     report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
-    assert "Empty repository detected." in report
+    assert "Empty repository detected." not in report
+    assert "Add a `tests/` directory" in report
 
 
 def test_scan_no_git_folder(tmp_path: Path) -> None:

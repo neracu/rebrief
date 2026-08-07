@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Iterator, TypedDict
 
+from rebrief.core.ignore import IgnoreMatcher
+
 MANIFEST_FILES: tuple[str, ...] = (
     "package.json",
     "requirements.txt",
@@ -34,17 +36,6 @@ FRAMEWORK_SIGNATURES: dict[str, str] = {
 }
 
 MAX_DEPTH = 3
-SKIP_DIRS: frozenset[str] = frozenset(
-    {
-        "node_modules",
-        "venv",
-        ".venv",
-        "env",
-        "dist",
-        "build",
-        ".git",
-    }
-)
 
 _REQUIREMENT_NAME_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
 _PYPROJECT_DEPENDENCY_RE = re.compile(r'"([^"]+)"')
@@ -61,6 +52,7 @@ class StackResult(TypedDict):
 class StackParser:
     def __init__(self, repo_path: str) -> None:
         self._repo_path = Path(repo_path)
+        self._ignore_matcher = IgnoreMatcher(repo_path)
 
     def parse(self) -> StackResult:
         is_empty = not any(True for _ in self._walk_files())
@@ -97,10 +89,16 @@ class StackParser:
             relative_root = root_path.relative_to(self._repo_path)
             depth = len(relative_root.parts)
 
+            relative_root_str = (
+                relative_root.as_posix() if relative_root.parts else ""
+            )
             dirs[:] = sorted(
                 directory
                 for directory in dirs
-                if directory not in SKIP_DIRS and depth < MAX_DEPTH
+                if depth < MAX_DEPTH
+                and not self._ignore_matcher.should_prune_dir(
+                    directory, relative_root_str
+                )
             )
 
             for filename in sorted(files):

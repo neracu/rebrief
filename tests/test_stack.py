@@ -195,6 +195,21 @@ def test_skips_node_modules(tmp_path: Path) -> None:
     assert "React" not in result["frameworks"]
 
 
+def test_respects_rebriefignore(tmp_path: Path) -> None:
+    custom = tmp_path / "custom_vendor"
+    custom.mkdir()
+    (custom / "package.json").write_text(
+        '{"dependencies": {"react": "^18.0.0"}}',
+        encoding="utf-8",
+    )
+    (tmp_path / ".rebriefignore").write_text("custom_vendor/\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["manifests"] == []
+    assert "React" not in result["frameworks"]
+
+
 def test_depth_limit_excludes_deep_files(tmp_path: Path) -> None:
     deep_dir = tmp_path / "a" / "b" / "c" / "d"
     deep_dir.mkdir(parents=True)

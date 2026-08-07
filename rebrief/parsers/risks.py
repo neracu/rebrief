@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fnmatch
 import json
 import math
 import os
@@ -8,6 +7,8 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterator, TypedDict
+
+from rebrief.core.ignore import IgnoreMatcher
 
 TEST_DIRS: tuple[str, ...] = ("tests", "test", "__tests__")
 MARKER_RE = re.compile(r"\b(TODO|FIXME|HACK|BUG)\b")
@@ -159,40 +160,6 @@ BINARY_EXTENSIONS: frozenset[str] = frozenset(
         ".db",
     }
 )
-DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset(
-    {
-        ".git",
-        "__pycache__",
-        "build",
-        "dist",
-    }
-)
-BLACKLIST_DIR_NAMES: frozenset[str] = frozenset(
-    {
-        "node_modules",
-        "bower_components",
-        "staticfiles",
-        "venv",
-        ".venv",
-        "env",
-        "site-packages",
-        ".next",
-        ".turbo",
-    }
-)
-BLACKLIST_PATH_FRAGMENTS: tuple[str, ...] = (
-    "node_modules/",
-    "bower_components/",
-    "staticfiles/",
-    "static/vendor/",
-    "assets/vendor/",
-    "site-packages/",
-    "venv/",
-    ".venv/",
-    "env/",
-    ".next/",
-    ".turbo/",
-)
 MANIFEST_JSON_FILES: frozenset[str] = frozenset(
     {
         "package.json",
@@ -202,7 +169,6 @@ MANIFEST_JSON_FILES: frozenset[str] = frozenset(
 )
 SKIP_EXTENSIONS: frozenset[str] = frozenset({".map", ".md"})
 SKIP_NAME_SUFFIXES: tuple[str, ...] = (".min.js", ".min.css")
-IGNORE_FILES: tuple[str, ...] = (".gitignore", ".cursorignore")
 
 
 class MarkerFinding(TypedDict):
@@ -232,7 +198,7 @@ class RisksParser:
     def __init__(self, repo_path: str, dependencies: list[str] | None = None) -> None:
         self._repo_path = Path(repo_path)
         self._dependencies = dependencies
-        self._ignore_patterns = self._load_ignore_patterns()
+        self._ignore_matcher = IgnoreMatcher(repo_path)
 
     def parse(self) -> RiskReport:
         markers: list[MarkerFinding] = []
@@ -253,62 +219,8 @@ class RisksParser:
     def _has_test_directory(self) -> bool:
         return any((self._repo_path / name).is_dir() for name in TEST_DIRS)
 
-    def _load_ignore_patterns(self) -> list[str]:
-        patterns: list[str] = []
-
-        for ignore_file in IGNORE_FILES:
-            path = self._repo_path / ignore_file
-            if not path.is_file():
-                continue
-
-            try:
-                lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            except OSError:
-                continue
-
-            for line in lines:
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                patterns.append(stripped)
-
-        return patterns
-
-    def _is_ignored(self, relative: str, is_dir: bool) -> bool:
-        normalized = relative.replace("\\", "/")
-
-        for pattern in self._ignore_patterns:
-            if pattern.endswith("/"):
-                if is_dir and (
-                    normalized == pattern[:-1]
-                    or normalized.startswith(f"{pattern}")
-                    or normalized.startswith(pattern[:-1] + "/")
-                ):
-                    return True
-                continue
-
-            if fnmatch.fnmatch(normalized, pattern):
-                return True
-            if fnmatch.fnmatch(Path(normalized).name, pattern):
-                return True
-
-        return False
-
-    def _normalize_relative(self, path: str) -> str:
-        return path.replace("\\", "/")
-
-    def _is_blacklisted_path(self, relative: str) -> bool:
-        normalized = self._normalize_relative(relative)
-        parts = [part for part in normalized.split("/") if part]
-
-        if any(part in BLACKLIST_DIR_NAMES for part in parts):
-            return True
-
-        prefixed = f"{normalized}/" if normalized else ""
-        return any(fragment in prefixed for fragment in BLACKLIST_PATH_FRAGMENTS)
-
     def _is_skippable_file(self, relative: str, filename: str) -> bool:
-        if self._is_blacklisted_path(relative):
+        if self._ignore_matcher.is_ignored(relative, is_dir=False):
             return True
 
         lowered_name = filename.lower()
@@ -334,19 +246,14 @@ class RisksParser:
             dirs[:] = sorted(
                 directory
                 for directory in dirs
-                if directory not in DEFAULT_IGNORE_DIRS
-                and directory not in BLACKLIST_DIR_NAMES
-                and not self._is_ignored(
-                    f"{relative_root}/{directory}".strip("/"),
-                    is_dir=True,
-                )
+                if not self._ignore_matcher.should_prune_dir(directory, relative_root)
             )
 
             for filename in sorted(files):
                 file_path = root_path / filename
                 relative_file = file_path.relative_to(self._repo_path).as_posix()
 
-                if self._is_ignored(relative_file, is_dir=False):
+                if self._ignore_matcher.is_ignored(relative_file, is_dir=False):
                     continue
                 if self._is_skippable_file(relative_file, filename):
                     continue

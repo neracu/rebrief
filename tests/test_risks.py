@@ -60,6 +60,19 @@ def test_respects_cursorignore(tmp_path: Path) -> None:
     ]
 
 
+def test_respects_rebriefignore(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / ".rebriefignore").write_text("ignored.py\n", encoding="utf-8")
+    (tmp_path / "ignored.py").write_text("# TODO hidden\n", encoding="utf-8")
+    (tmp_path / "visible.py").write_text("# FIXME visible\n", encoding="utf-8")
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == [
+        {"file": "visible.py", "line": 1, "marker": "FIXME"}
+    ]
+
+
 def test_skips_binary_files(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "cache.pyc").write_bytes(b"\x00TODO")

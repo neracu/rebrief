@@ -52,3 +52,6 @@ Thumbs.db
 # Generated reports
 REBRIEF.md
 HANDOFF.md
+
+# Generated when scanning this repo locally
+.rebriefignore

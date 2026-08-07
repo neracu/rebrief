@@ -59,9 +59,20 @@ pip install rebrief
 ```bash
 rebrief scan .
 rebrief scan /path/to/repo -o REBRIEF.md
+rebrief init .
 ```
 
 Scan the current directory (default) or any local path. Output defaults to `REBRIEF.md` in the target repo.
+
+### Excluding paths with `.rebriefignore`
+
+rebrief skips common noise by default (`node_modules`, `.git`, `dist`, `build`, `.next`, `__pycache__`, `.venv`, and similar). To exclude more paths, add a `.rebriefignore` file at the repo root using standard `.gitignore` syntax (globs, `#` comments, one pattern per line).
+
+```bash
+rebrief init .   # create a starter .rebriefignore
+```
+
+On the first `rebrief scan`, rebrief creates `.rebriefignore` automatically if it is missing. Patterns in that file supplement the built-in defaults — they do not replace them.
 
 ---
 

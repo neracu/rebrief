@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from rebrief import __version__
+from rebrief.core.confidence import Confidence, meets_threshold
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
+
+Severity = Literal["critical", "warning", "info"]
 
 
 class ReportCommit(TypedDict):
@@ -41,10 +44,15 @@ class ReportTimeline(TypedDict):
     hotspots: list[ReportHotspot]
 
 
+class ReportRiskItem(TypedDict):
+    message: str
+    confidence: str
+
+
 class ReportRiskMap(TypedDict):
-    critical: list[str]
-    warning: list[str]
-    info: list[str]
+    critical: list[ReportRiskItem]
+    warning: list[ReportRiskItem]
+    info: list[ReportRiskItem]
 
 
 class ReportPayload(TypedDict):
@@ -56,6 +64,12 @@ class ReportPayload(TypedDict):
     checklist: list[str]
 
 
+class _CollectedRiskItem(TypedDict):
+    severity: Severity
+    message: str
+    confidence: str
+
+
 class ReportGenerator:
     def __init__(
         self,
@@ -64,12 +78,14 @@ class ReportGenerator:
         rules: dict[str, RuleFileEntry],
         git_log: GitLogResult,
         risks: RiskReport,
+        min_confidence: Confidence = Confidence.MEDIUM,
     ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
         self._rules = rules
         self._git_log = git_log
         self._risks = risks
+        self._min_confidence = min_confidence
 
     def generate(self) -> str:
         sections = [
@@ -91,12 +107,15 @@ class ReportGenerator:
     def write_json_report(self, output_path: str | Path = "REBRIEF.json") -> None:
         Path(output_path).write_text(self.generate_json(), encoding="utf-8")
 
+    def filtered_risk_count(self) -> int:
+        return len(self._filtered_risk_items())
+
     def to_dict(self) -> ReportPayload:
         return {
             "version": __version__,
             "summary": {
                 "languages_count": len(self._stack["languages"]),
-                "risks_count": self._risk_count(),
+                "risks_count": self.filtered_risk_count(),
                 "ai_instruction_files": sorted(self._rules),
             },
             "tech_stack": {
@@ -123,28 +142,95 @@ class ReportGenerator:
                     for entry in self._git_log["top_modified_files"]
                 ],
             },
-            "risk_map": {
-                "critical": self._critical_risk_messages(),
-                "warning": self._warning_risk_messages(),
-                "info": self._info_risk_messages(),
-            },
+            "risk_map": self._risk_map_payload(),
             "checklist": self._checklist_items(),
         }
 
-    def _risk_count(self) -> int:
-        return (
-            len(self._risks["secrets"])
-            + (1 if self._risks["missing_tests"] else 0)
-            + len(self._risks["dependency_conflicts"])
-            + len(self._risks["markers"])
-            + len(self._stack["manifest_warnings"])
-        )
+    def _collect_risk_items(self) -> list[_CollectedRiskItem]:
+        items: list[_CollectedRiskItem] = []
+
+        for entry in self._risks["secrets"]:
+            items.append(
+                {
+                    "severity": "critical",
+                    "message": f"Hard-coded secret in {entry['file']}:{entry['line']}",
+                    "confidence": entry["confidence"],
+                }
+            )
+
+        if self._risks["missing_tests"]:
+            items.append(
+                {
+                    "severity": "warning",
+                    "message": "Missing tests directory (`tests/`, `test/`, or `__tests__/`).",
+                    "confidence": Confidence.HIGH.value,
+                }
+            )
+
+        for conflict in self._risks["dependency_conflicts"]:
+            versions = ", ".join(conflict["versions"])
+            items.append(
+                {
+                    "severity": "warning",
+                    "message": (
+                        f"Duplicate dependency `{conflict['package']}` "
+                        f"with conflicting versions: {versions}."
+                    ),
+                    "confidence": Confidence.MEDIUM.value,
+                }
+            )
+
+        for warning in self._stack["manifest_warnings"]:
+            items.append(
+                {
+                    "severity": "warning",
+                    "message": warning,
+                    "confidence": Confidence.HIGH.value,
+                }
+            )
+
+        for entry in self._risks["markers"]:
+            items.append(
+                {
+                    "severity": "info",
+                    "message": f"{entry['marker']} in {entry['file']}:{entry['line']}",
+                    "confidence": entry["confidence"],
+                }
+            )
+
+        return items
+
+    def _filtered_risk_items(self) -> list[_CollectedRiskItem]:
+        return [
+            item
+            for item in self._collect_risk_items()
+            if meets_threshold(Confidence(item["confidence"]), self._min_confidence)
+        ]
+
+    def _risk_map_payload(self) -> ReportRiskMap:
+        critical: list[ReportRiskItem] = []
+        warning: list[ReportRiskItem] = []
+        info: list[ReportRiskItem] = []
+
+        for item in self._filtered_risk_items():
+            payload: ReportRiskItem = {
+                "message": item["message"],
+                "confidence": item["confidence"],
+            }
+            if item["severity"] == "critical":
+                critical.append(payload)
+            elif item["severity"] == "warning":
+                warning.append(payload)
+            else:
+                info.append(payload)
+
+        return {"critical": critical, "warning": warning, "info": info}
 
     def _title(self) -> str:
         return f"# REBRIEF REPORT: {self._repo_path.name}"
 
     def _section_overview(self) -> str:
-        risk_count = self._risk_count()
+        risk_count = self.filtered_risk_count()
 
         if self._stack["is_empty"]:
             impression = "Empty repository detected."
@@ -227,75 +313,53 @@ class ReportGenerator:
             "## 4. Risk Map (AI Debt & Security)",
             "### [CRITICAL]",
         ]
-        lines.extend(self._format_critical_risks())
+        lines.extend(self._format_risk_tier("critical"))
         lines.append("")
         lines.append("### [WARNING]")
-        lines.extend(self._format_warning_risks())
+        lines.extend(self._format_risk_tier("warning"))
         lines.append("")
         lines.append("### [INFO]")
-        lines.extend(self._format_info_risks())
+        lines.extend(self._format_risk_tier("info"))
         return "\n".join(lines)
 
-    def _critical_risk_messages(self) -> list[str]:
-        return [
-            f"Hard-coded secret in {entry['file']}:{entry['line']}"
-            for entry in self._risks["secrets"]
+    def _format_risk_tier(self, severity: Severity) -> list[str]:
+        items = [
+            item for item in self._filtered_risk_items() if item["severity"] == severity
         ]
-
-    def _warning_risk_messages(self) -> list[str]:
-        warnings: list[str] = []
-
-        if self._risks["missing_tests"]:
-            warnings.append("Missing tests directory (`tests/`, `test/`, or `__tests__/`).")
-
-        for conflict in self._risks["dependency_conflicts"]:
-            versions = ", ".join(conflict["versions"])
-            warnings.append(
-                f"Duplicate dependency `{conflict['package']}` "
-                f"with conflicting versions: {versions}."
-            )
-
-        warnings.extend(self._stack["manifest_warnings"])
-
-        return warnings
-
-    def _info_risk_messages(self) -> list[str]:
-        return [
-            f"{entry['marker']} in {entry['file']}:{entry['line']}"
-            for entry in self._risks["markers"]
-        ]
-
-    def _format_critical_risks(self) -> list[str]:
-        messages = self._critical_risk_messages()
-        if not messages:
+        if not items:
             return ["- None detected."]
-        return [f"- {message}" for message in messages]
+        return [self._format_risk_line(item) for item in items]
 
-    def _format_warning_risks(self) -> list[str]:
-        messages = self._warning_risk_messages()
-        if not messages:
-            return ["- None detected."]
-        return [f"- {message}" for message in messages]
+    def _format_risk_line(self, item: _CollectedRiskItem) -> str:
+        severity_label = item["severity"].upper()
+        confidence_label = item["confidence"]
+        message = item["message"]
+        if item["confidence"] == Confidence.LOW.value:
+            message = f"{message} (Requires Verification)"
+        return (
+            f"- [{severity_label}] [Confidence: {confidence_label}] {message}"
+        )
 
-    def _format_info_risks(self) -> list[str]:
-        messages = self._info_risk_messages()
-        if not messages:
-            return ["- None detected."]
-        return [f"- {message}" for message in messages]
+    def _is_filtered_risk(self, confidence_value: str) -> bool:
+        return meets_threshold(Confidence(confidence_value), self._min_confidence)
 
     def _checklist_items(self) -> list[str]:
         items: list[str] = []
 
         for secret in self._risks["secrets"]:
+            if not self._is_filtered_risk(secret["confidence"]):
+                continue
             items.append(
                 "Review and rotate hard-coded credentials in "
                 f"{secret['file']} (line {secret['line']})."
             )
 
-        if self._risks["missing_tests"]:
+        if self._risks["missing_tests"] and self._is_filtered_risk(Confidence.HIGH.value):
             items.append("Add a `tests/` directory and cover critical paths.")
 
         for conflict in self._risks["dependency_conflicts"]:
+            if not self._is_filtered_risk(Confidence.MEDIUM.value):
+                continue
             versions = ", ".join(conflict["versions"])
             items.append(
                 f"Resolve version conflict for `{conflict['package']}`: {versions}."

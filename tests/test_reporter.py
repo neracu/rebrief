@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 
 from rebrief import __version__
+from rebrief.core.confidence import Confidence
 from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import POINT_ZERO_MESSAGE, GitLogResult
 from rebrief.parsers.risks import RiskReport
@@ -43,8 +44,10 @@ def make_report_data() -> tuple[
     }
     risks: RiskReport = {
         "missing_tests": True,
-        "markers": [{"file": "app.py", "line": 10, "marker": "TODO"}],
-        "secrets": [{"file": "config.py", "line": 3}],
+        "markers": [
+            {"file": "app.py", "line": 10, "marker": "TODO", "confidence": "LOW"}
+        ],
+        "secrets": [{"file": "config.py", "line": 3, "confidence": "MEDIUM"}],
         "dependency_conflicts": [
             {"package": "django", "versions": ["==3.2", "==4.2"]},
         ],
@@ -69,15 +72,24 @@ def test_generate_includes_all_sections(tmp_path: Path) -> None:
 
 
 def test_generate_critical_warning_info(tmp_path: Path) -> None:
-    report = _make_generator(tmp_path).generate()
+    stack, rules, git_log, risks = make_report_data()
+    generator = ReportGenerator(
+        str(tmp_path / "demo-repo"),
+        stack,
+        rules,
+        git_log,
+        risks,
+        min_confidence=Confidence.LOW,
+    )
+    report = generator.generate()
 
     assert "### [CRITICAL]" in report
-    assert "Hard-coded secret in config.py:3" in report
+    assert "[Confidence: MEDIUM] Hard-coded secret in config.py:3" in report
     assert "### [WARNING]" in report
-    assert "Missing tests directory" in report
-    assert "Duplicate dependency `django`" in report
+    assert "[Confidence: HIGH] Missing tests directory" in report
+    assert "[Confidence: MEDIUM] Duplicate dependency `django`" in report
     assert "### [INFO]" in report
-    assert "TODO in app.py:10" in report
+    assert "[Confidence: LOW] TODO in app.py:10 (Requires Verification)" in report
 
 
 def test_generate_stack_section(tmp_path: Path) -> None:
@@ -237,7 +249,7 @@ def test_to_dict_field_mapping(tmp_path: Path) -> None:
     payload = _make_generator(tmp_path).to_dict()
 
     assert payload["summary"]["languages_count"] == 1
-    assert payload["summary"]["risks_count"] == 4
+    assert payload["summary"]["risks_count"] == 3
     assert payload["summary"]["ai_instruction_files"] == [".cursorrules", "CLAUDE.md"]
     assert payload["timeline"]["recent_commits"] == [
         {
@@ -248,9 +260,15 @@ def test_to_dict_field_mapping(tmp_path: Path) -> None:
         }
     ]
     assert payload["timeline"]["hotspots"] == [{"file": "src/app.py", "changes": 8}]
-    assert payload["risk_map"]["critical"] == ["Hard-coded secret in config.py:3"]
-    assert "Missing tests directory" in payload["risk_map"]["warning"][0]
-    assert payload["risk_map"]["info"] == ["TODO in app.py:10"]
+    assert payload["risk_map"]["critical"] == [
+        {
+            "message": "Hard-coded secret in config.py:3",
+            "confidence": "MEDIUM",
+        }
+    ]
+    assert payload["risk_map"]["warning"][0]["message"].startswith("Missing tests directory")
+    assert payload["risk_map"]["warning"][0]["confidence"] == "HIGH"
+    assert payload["risk_map"]["info"] == []
     assert "Review and rotate hard-coded credentials in config.py (line 3)." in payload["checklist"]
 
 
@@ -307,7 +325,8 @@ def test_manifest_warning_in_risk_map(tmp_path: Path) -> None:
     payload = generator.to_dict()
 
     assert payload["summary"]["risks_count"] == 1
-    assert "Malformed manifest: composer.json" in payload["risk_map"]["warning"][0]
+    assert payload["risk_map"]["warning"][0]["message"].startswith("Malformed manifest: composer.json")
+    assert payload["risk_map"]["warning"][0]["confidence"] == "HIGH"
 
 
 def test_generate_json_valid(tmp_path: Path) -> None:
@@ -360,3 +379,40 @@ def test_write_json_report_creates_file(tmp_path: Path) -> None:
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["version"] == __version__
     assert payload["tech_stack"]["frameworks"] == ["Django"]
+
+
+def test_min_confidence_filters_low_info_items(tmp_path: Path) -> None:
+    stack, rules, git_log, risks = make_report_data()
+    generator = ReportGenerator(
+        str(tmp_path / "demo-repo"),
+        stack,
+        rules,
+        git_log,
+        risks,
+        min_confidence=Confidence.MEDIUM,
+    )
+
+    report = generator.generate()
+
+    assert "Missing tests directory" in report
+    assert "TODO in app.py:10" not in report
+    assert generator.filtered_risk_count() == 3
+
+
+def test_min_confidence_high_excludes_medium_items(tmp_path: Path) -> None:
+    stack, rules, git_log, risks = make_report_data()
+    generator = ReportGenerator(
+        str(tmp_path / "demo-repo"),
+        stack,
+        rules,
+        git_log,
+        risks,
+        min_confidence=Confidence.HIGH,
+    )
+    payload = generator.to_dict()
+
+    assert payload["risk_map"]["critical"] == []
+    assert len(payload["risk_map"]["warning"]) == 1
+    assert payload["risk_map"]["warning"][0]["confidence"] == "HIGH"
+    assert payload["risk_map"]["info"] == []
+    assert generator.filtered_risk_count() == 1

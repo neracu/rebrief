@@ -31,7 +31,7 @@ def test_detects_markers(tmp_path: Path) -> None:
     result = RisksParser(str(tmp_path)).parse()
 
     assert result["markers"] == [
-        {"file": "module.py", "line": 2, "marker": "TODO"}
+        {"file": "module.py", "line": 2, "marker": "TODO", "confidence": "LOW"}
     ]
 
 
@@ -44,7 +44,9 @@ def test_detects_secrets(tmp_path: Path) -> None:
 
     result = RisksParser(str(tmp_path)).parse()
 
-    assert result["secrets"] == [{"file": "config.py", "line": 1}]
+    assert result["secrets"] == [
+        {"file": "config.py", "line": 1, "confidence": "MEDIUM"}
+    ]
 
 
 def test_respects_cursorignore(tmp_path: Path) -> None:
@@ -56,7 +58,7 @@ def test_respects_cursorignore(tmp_path: Path) -> None:
     result = RisksParser(str(tmp_path)).parse()
 
     assert result["markers"] == [
-        {"file": "visible.py", "line": 1, "marker": "FIXME"}
+        {"file": "visible.py", "line": 1, "marker": "FIXME", "confidence": "LOW"}
     ]
 
 
@@ -69,7 +71,7 @@ def test_respects_rebriefignore(tmp_path: Path) -> None:
     result = RisksParser(str(tmp_path)).parse()
 
     assert result["markers"] == [
-        {"file": "visible.py", "line": 1, "marker": "FIXME"}
+        {"file": "visible.py", "line": 1, "marker": "FIXME", "confidence": "LOW"}
     ]
 
 
@@ -222,5 +224,5 @@ def test_scans_source_directories(tmp_path: Path) -> None:
     result = RisksParser(str(tmp_path)).parse()
 
     assert result["markers"] == [
-        {"file": "frontend/src/app.py", "line": 2, "marker": "TODO"}
+        {"file": "frontend/src/app.py", "line": 2, "marker": "TODO", "confidence": "LOW"}
     ]

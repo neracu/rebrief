@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterator, TypedDict
 
+from rebrief.core.confidence import Confidence
 from rebrief.core.ignore import IgnoreMatcher
 
 TEST_DIRS: tuple[str, ...] = ("tests", "test", "__tests__")
@@ -129,16 +130,18 @@ def _is_namespaced_storage_key(value: str) -> bool:
     return _LOWERCASE_IDENTIFIER_CHARS_RE.match(value) is not None
 
 
-def _is_secret_value(value: str) -> bool:
+def _classify_secret_value(value: str) -> Confidence | None:
     if KNOWN_SECRET_FORMAT_RE.search(value):
-        return True
+        return Confidence.HIGH
     if _is_namespaced_storage_key(value):
-        return False
+        return None
     if len(value) < ENTROPY_MIN_LENGTH:
-        return False
+        return None
     if FORBIDDEN_LITERAL_CHARS_RE.search(value):
-        return False
-    return _shannon_entropy(value) >= ENTROPY_THRESHOLD
+        return None
+    if _shannon_entropy(value) >= ENTROPY_THRESHOLD:
+        return Confidence.MEDIUM
+    return None
 
 
 BINARY_EXTENSIONS: frozenset[str] = frozenset(
@@ -175,11 +178,13 @@ class MarkerFinding(TypedDict):
     file: str
     line: int
     marker: str
+    confidence: str
 
 
 class SecretFinding(TypedDict):
     file: str
     line: int
+    confidence: str
 
 
 class DependencyConflict(TypedDict):
@@ -295,23 +300,39 @@ class RisksParser:
                         "file": relative,
                         "line": line_number,
                         "marker": marker_match.group(1),
+                        "confidence": Confidence.LOW.value,
                     }
                 )
 
-            if not is_csv and self._line_has_secret(line, relative):
-                secrets.append({"file": relative, "line": line_number})
+            if not is_csv:
+                secret_confidence = self._line_secret_confidence(line, relative)
+                if secret_confidence is not None:
+                    secrets.append(
+                        {
+                            "file": relative,
+                            "line": line_number,
+                            "confidence": secret_confidence.value,
+                        }
+                    )
 
         return markers, secrets
 
-    def _line_has_secret(self, line: str, relative_path: str) -> bool:
+    def _line_secret_confidence(
+        self, line: str, relative_path: str
+    ) -> Confidence | None:
+        best: Confidence | None = None
         for name, value in _iter_literal_candidates(line):
             if _is_excluded_context(relative_path, name):
                 continue
             if not _name_implies_credential(name):
                 continue
-            if _is_secret_value(value):
-                return True
-        return False
+            confidence = _classify_secret_value(value)
+            if confidence is None:
+                continue
+            if confidence == Confidence.HIGH:
+                return Confidence.HIGH
+            best = confidence
+        return best
 
     def _check_dependency_conflicts(self) -> list[DependencyConflict]:
         if self._dependencies is not None and not self._has_dependency_manifests():

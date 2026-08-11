@@ -7,12 +7,13 @@ from rich.panel import Panel
 from rich.table import Table
 
 from rebrief import __version__
+from rebrief.core.confidence import parse_min_confidence
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
 from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import GitLogParser
-from rebrief.parsers.risks import RiskReport, RisksParser
+from rebrief.parsers.risks import RisksParser
 from rebrief.parsers.rules import RulesParser
-from rebrief.parsers.stack import StackParser, StackResult
+from rebrief.parsers.stack import StackParser
 
 
 def _configure_stdio() -> None:
@@ -37,14 +38,6 @@ def _scan_prefix() -> str:
 
 _configure_stdio()
 console = Console()
-
-
-def _count_risks(risks: RiskReport, stack: StackResult) -> int:
-    total = len(risks["markers"]) + len(risks["secrets"]) + len(risks["dependency_conflicts"])
-    if risks["missing_tests"]:
-        total += 1
-    total += len(stack["manifest_warnings"])
-    return total
 
 
 def _default_output(format: str) -> str:
@@ -107,7 +100,15 @@ def init(repo_path: str) -> None:
     default=None,
     help="Output path (default: REBRIEF.md or REBRIEF.json). Use '-' for stdout.",
 )
-def scan(repo_path: str, format: str, output: str | None) -> None:
+@click.option(
+    "--min-confidence",
+    "-c",
+    type=click.Choice(["high", "medium", "low"], case_sensitive=False),
+    default="medium",
+    show_default=True,
+    help="Minimum confidence level for risks included in the report.",
+)
+def scan(repo_path: str, format: str, output: str | None, min_confidence: str) -> None:
     repo = Path(repo_path)
     resolved_output = output or _default_output(format)
     write_to_stdout = resolved_output == "-"
@@ -135,7 +136,14 @@ def scan(repo_path: str, format: str, output: str | None) -> None:
     with ui.status("[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"):
         risks = RisksParser(repo_path, dependencies=stack["dependencies"]).parse()
 
-    generator = ReportGenerator(repo_path, stack, rules, git_log, risks)
+    generator = ReportGenerator(
+        repo_path,
+        stack,
+        rules,
+        git_log,
+        risks,
+        min_confidence=parse_min_confidence(min_confidence),
+    )
 
     if write_to_stdout:
         content = generator.generate_json() if format == "json" else generator.generate()
@@ -149,7 +157,7 @@ def scan(repo_path: str, format: str, output: str | None) -> None:
 
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("Languages found", str(len(stack["languages"])))
-    table.add_row("Risks identified", str(_count_risks(risks, stack)))
+    table.add_row("Risks identified", str(generator.filtered_risk_count()))
     report_destination = "(stdout)" if write_to_stdout else str((repo / resolved_output).resolve())
     table.add_row("Report file", report_destination)
     ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))

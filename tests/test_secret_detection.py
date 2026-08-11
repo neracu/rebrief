@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from rebrief.core.confidence import Confidence
 from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RisksParser
@@ -11,10 +12,10 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "secrets"
 DEFAULT_RELATIVE_PATH = "app/config.py"
 
 EXPECTED_FINDINGS = [
-    {"file": "aws_config.py", "line": 2},
-    {"file": "openai_config.py", "line": 2},
-    {"file": "api_keys.cfg", "line": 1},
-    {"file": "app_config.py", "line": 2},
+    {"file": "aws_config.py", "line": 2, "confidence": "HIGH"},
+    {"file": "openai_config.py", "line": 2, "confidence": "HIGH"},
+    {"file": "api_keys.cfg", "line": 1, "confidence": "HIGH"},
+    {"file": "app_config.py", "line": 2, "confidence": "MEDIUM"},
 ]
 
 
@@ -155,9 +156,9 @@ def test_secret_pattern_detection(
     label: str,
 ) -> None:
     parser = RisksParser.__new__(RisksParser)
-    detected = parser._line_has_secret(source_line, relative_path)
+    confidence = parser._line_secret_confidence(source_line, relative_path)
 
-    assert detected is should_detect, label
+    assert (confidence is not None) is should_detect, label
 
 
 def test_secret_findings_in_critical_section() -> None:
@@ -188,5 +189,6 @@ def test_secret_findings_in_critical_section() -> None:
     assert "### [CRITICAL]" in report
     for finding in EXPECTED_FINDINGS:
         assert (
-            f"Hard-coded secret in {finding['file']}:{finding['line']}" in report
+            f"[Confidence: {finding['confidence']}] Hard-coded secret in "
+            f"{finding['file']}:{finding['line']}" in report
         )

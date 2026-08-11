@@ -21,6 +21,8 @@ def test_scan_help() -> None:
     assert result.exit_code == 0
     assert "--format" in result.output
     assert "--output" in result.output
+    assert "--min-confidence" in result.output
+    assert "-c" in result.output
 
 
 def test_main_version() -> None:
@@ -152,3 +154,28 @@ def test_scan_stdout_markdown(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert not (tmp_path / "REBRIEF.md").is_file()
     assert "# REBRIEF REPORT:" in result.output
+
+
+def test_scan_min_confidence_filters_low_markers(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("# TODO review later\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-c", "medium"])
+
+    assert result.exit_code == 0
+    report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
+    assert "Missing tests directory" in report
+    assert "TODO in app.py:1" not in report
+    assert "Risks identified    1" in result.output
+
+
+def test_scan_min_confidence_low_includes_markers(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("# TODO review later\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-c", "low"])
+
+    assert result.exit_code == 0
+    report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
+    assert "TODO in app.py:1" in report
+    assert "Risks identified    2" in result.output

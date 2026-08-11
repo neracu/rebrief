@@ -1,11 +1,59 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import TypedDict
 
+from rebrief import __version__
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
+
+
+class ReportCommit(TypedDict):
+    hash: str
+    date: str
+    message: str
+    author: str
+
+
+class ReportHotspot(TypedDict):
+    file: str
+    changes: int
+
+
+class ReportSummary(TypedDict):
+    languages_count: int
+    risks_count: int
+    ai_instruction_files: list[str]
+
+
+class ReportTechStack(TypedDict):
+    languages: list[str]
+    frameworks: list[str]
+    manifests: list[str]
+    dependencies: list[str]
+
+
+class ReportTimeline(TypedDict):
+    recent_commits: list[ReportCommit]
+    hotspots: list[ReportHotspot]
+
+
+class ReportRiskMap(TypedDict):
+    critical: list[str]
+    warning: list[str]
+    info: list[str]
+
+
+class ReportPayload(TypedDict):
+    version: str
+    summary: ReportSummary
+    tech_stack: ReportTechStack
+    timeline: ReportTimeline
+    risk_map: ReportRiskMap
+    checklist: list[str]
 
 
 class ReportGenerator:
@@ -34,24 +82,68 @@ class ReportGenerator:
         ]
         return "\n\n".join(sections) + "\n"
 
+    def generate_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n"
+
     def write_report(self, output_path: str | Path = "REBRIEF.md") -> None:
         Path(output_path).write_text(self.generate(), encoding="utf-8")
 
-    def _title(self) -> str:
-        return f"# REBRIEF REPORT: {self._repo_path.name}"
+    def write_json_report(self, output_path: str | Path = "REBRIEF.json") -> None:
+        Path(output_path).write_text(self.generate_json(), encoding="utf-8")
 
-    def _section_overview(self) -> str:
-        ai_files = [
-            filename
-            for filename in self._rules
-            if filename != "README.md"
-        ]
-        risk_count = (
+    def to_dict(self) -> ReportPayload:
+        return {
+            "version": __version__,
+            "summary": {
+                "languages_count": len(self._stack["languages"]),
+                "risks_count": self._risk_count(),
+                "ai_instruction_files": sorted(self._rules),
+            },
+            "tech_stack": {
+                "languages": list(self._stack["languages"]),
+                "frameworks": list(self._stack["frameworks"]),
+                "manifests": list(self._stack["manifests"]),
+                "dependencies": list(self._stack["dependencies"]),
+            },
+            "timeline": {
+                "recent_commits": [
+                    {
+                        "hash": commit["hash"],
+                        "date": commit["date"],
+                        "message": commit["subject"],
+                        "author": commit["author"],
+                    }
+                    for commit in self._git_log["commits"]
+                ],
+                "hotspots": [
+                    {
+                        "file": entry["file"],
+                        "changes": entry["count"],
+                    }
+                    for entry in self._git_log["top_modified_files"]
+                ],
+            },
+            "risk_map": {
+                "critical": self._critical_risk_messages(),
+                "warning": self._warning_risk_messages(),
+                "info": self._info_risk_messages(),
+            },
+            "checklist": self._checklist_items(),
+        }
+
+    def _risk_count(self) -> int:
+        return (
             len(self._risks["secrets"])
             + (1 if self._risks["missing_tests"] else 0)
             + len(self._risks["dependency_conflicts"])
             + len(self._risks["markers"])
         )
+
+    def _title(self) -> str:
+        return f"# REBRIEF REPORT: {self._repo_path.name}"
+
+    def _section_overview(self) -> str:
+        risk_count = self._risk_count()
 
         if self._stack["is_empty"]:
             impression = "Empty repository detected."
@@ -143,40 +235,52 @@ class ReportGenerator:
         lines.extend(self._format_info_risks())
         return "\n".join(lines)
 
-    def _format_critical_risks(self) -> list[str]:
-        if not self._risks["secrets"]:
-            return ["- None detected."]
-
+    def _critical_risk_messages(self) -> list[str]:
         return [
-            f"- Hard-coded secret in {entry['file']}:{entry['line']}"
+            f"Hard-coded secret in {entry['file']}:{entry['line']}"
             for entry in self._risks["secrets"]
         ]
 
-    def _format_warning_risks(self) -> list[str]:
+    def _warning_risk_messages(self) -> list[str]:
         warnings: list[str] = []
 
         if self._risks["missing_tests"]:
-            warnings.append("- Missing tests directory (`tests/`, `test/`, or `__tests__/`).")
+            warnings.append("Missing tests directory (`tests/`, `test/`, or `__tests__/`).")
 
         for conflict in self._risks["dependency_conflicts"]:
             versions = ", ".join(conflict["versions"])
             warnings.append(
-                f"- Duplicate dependency `{conflict['package']}` "
+                f"Duplicate dependency `{conflict['package']}` "
                 f"with conflicting versions: {versions}."
             )
 
-        return warnings or ["- None detected."]
+        return warnings
 
-    def _format_info_risks(self) -> list[str]:
-        if not self._risks["markers"]:
-            return ["- None detected."]
-
+    def _info_risk_messages(self) -> list[str]:
         return [
-            f"- {entry['marker']} in {entry['file']}:{entry['line']}"
+            f"{entry['marker']} in {entry['file']}:{entry['line']}"
             for entry in self._risks["markers"]
         ]
 
-    def _section_checklist(self) -> str:
+    def _format_critical_risks(self) -> list[str]:
+        messages = self._critical_risk_messages()
+        if not messages:
+            return ["- None detected."]
+        return [f"- {message}" for message in messages]
+
+    def _format_warning_risks(self) -> list[str]:
+        messages = self._warning_risk_messages()
+        if not messages:
+            return ["- None detected."]
+        return [f"- {message}" for message in messages]
+
+    def _format_info_risks(self) -> list[str]:
+        messages = self._info_risk_messages()
+        if not messages:
+            return ["- None detected."]
+        return [f"- {message}" for message in messages]
+
+    def _checklist_items(self) -> list[str]:
         items: list[str] = []
 
         for secret in self._risks["secrets"]:
@@ -206,6 +310,11 @@ class ReportGenerator:
         if not items:
             items.append("Review the sections above and validate the project setup.")
 
+        return items
+
+    def _section_checklist(self) -> str:
         lines = ['## 5. Developer Checklist ("Where to Start")']
-        lines.extend(f"{index}. {item}" for index, item in enumerate(items, start=1))
+        lines.extend(
+            f"{index}. {item}" for index, item in enumerate(self._checklist_items(), start=1)
+        )
         return "\n".join(lines)

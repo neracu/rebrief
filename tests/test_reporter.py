@@ -1,5 +1,7 @@
 from pathlib import Path
+import json
 
+from rebrief import __version__
 from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import POINT_ZERO_MESSAGE, GitLogResult
 from rebrief.parsers.risks import RiskReport
@@ -199,3 +201,95 @@ def test_generate_monorepo_manifests(tmp_path: Path) -> None:
         "**Manifests:** Cargo.toml, backend/requirements.txt, frontend/package.json, go.mod"
         in report
     )
+
+
+def test_to_dict_structure(tmp_path: Path) -> None:
+    payload = _make_generator(tmp_path).to_dict()
+
+    assert payload["version"] == __version__
+    assert set(payload.keys()) == {
+        "version",
+        "summary",
+        "tech_stack",
+        "timeline",
+        "risk_map",
+        "checklist",
+    }
+    assert set(payload["summary"].keys()) == {
+        "languages_count",
+        "risks_count",
+        "ai_instruction_files",
+    }
+    assert set(payload["tech_stack"].keys()) == {
+        "languages",
+        "frameworks",
+        "manifests",
+        "dependencies",
+    }
+    assert set(payload["timeline"].keys()) == {"recent_commits", "hotspots"}
+    assert set(payload["risk_map"].keys()) == {"critical", "warning", "info"}
+
+
+def test_to_dict_field_mapping(tmp_path: Path) -> None:
+    payload = _make_generator(tmp_path).to_dict()
+
+    assert payload["summary"]["languages_count"] == 1
+    assert payload["summary"]["risks_count"] == 4
+    assert payload["summary"]["ai_instruction_files"] == [".cursorrules", "CLAUDE.md"]
+    assert payload["timeline"]["recent_commits"] == [
+        {
+            "hash": "a1b2c3d",
+            "date": "2026-01-15",
+            "message": "Add authentication module",
+            "author": "Alice",
+        }
+    ]
+    assert payload["timeline"]["hotspots"] == [{"file": "src/app.py", "changes": 8}]
+    assert payload["risk_map"]["critical"] == ["Hard-coded secret in config.py:3"]
+    assert "Missing tests directory" in payload["risk_map"]["warning"][0]
+    assert payload["risk_map"]["info"] == ["TODO in app.py:10"]
+    assert "Review and rotate hard-coded credentials in config.py (line 3)." in payload["checklist"]
+
+
+def test_to_dict_empty_risks(tmp_path: Path) -> None:
+    stack: StackResult = {
+        "languages": ["Python"],
+        "manifests": ["pyproject.toml"],
+        "frameworks": [],
+        "dependencies": [],
+        "is_empty": False,
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": None,
+    }
+    risks: RiskReport = {
+        "missing_tests": False,
+        "markers": [],
+        "secrets": [],
+        "dependency_conflicts": [],
+    }
+    generator = ReportGenerator(str(tmp_path / "clean-repo"), stack, {}, git_log, risks)
+    payload = generator.to_dict()
+
+    assert payload["risk_map"] == {"critical": [], "warning": [], "info": []}
+    assert payload["summary"]["risks_count"] == 0
+
+
+def test_generate_json_valid(tmp_path: Path) -> None:
+    payload = json.loads(_make_generator(tmp_path).generate_json())
+
+    assert payload["version"] == __version__
+    assert payload["tech_stack"]["languages"] == ["Python"]
+
+
+def test_write_json_report_creates_file(tmp_path: Path) -> None:
+    output_path = tmp_path / "REBRIEF.json"
+    generator = _make_generator(tmp_path)
+
+    generator.write_json_report(output_path)
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["version"] == __version__
+    assert payload["tech_stack"]["frameworks"] == ["Django"]

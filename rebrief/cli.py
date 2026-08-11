@@ -46,6 +46,10 @@ def _count_risks(risks: RiskReport) -> int:
     return total
 
 
+def _default_output(format: str) -> str:
+    return "REBRIEF.json" if format == "json" else "REBRIEF.md"
+
+
 def _prepare_repo(repo_path: Path) -> bool:
     """Ensure .rebriefignore exists. Returns True if the file was created."""
     try:
@@ -88,38 +92,66 @@ def init(repo_path: str) -> None:
 
 @main.command()
 @click.argument("repo_path", type=click.Path(exists=True, file_okay=False), default=".")
-@click.option("--output", "-o", default="REBRIEF.md", show_default=True, help="Output report filename.")
-def scan(repo_path: str, output: str) -> None:
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    default="markdown",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    help="Output path (default: REBRIEF.md or REBRIEF.json). Use '-' for stdout.",
+)
+def scan(repo_path: str, format: str, output: str | None) -> None:
     repo = Path(repo_path)
+    resolved_output = output or _default_output(format)
+    write_to_stdout = resolved_output == "-"
+    ui = Console(file=sys.stderr) if write_to_stdout else console
+
     if _prepare_repo(repo):
-        console.print(
+        ui.print(
             f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
         )
 
-    console.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
-    console.print(f"  [dim]Path:[/dim]   {repo_path}")
-    console.print(f"  [dim]Output:[/dim] {output}")
+    ui.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
+    ui.print(f"  [dim]Path:[/dim]   {repo_path}")
+    ui.print(f"  [dim]Format:[/dim] {format}")
+    ui.print(f"  [dim]Output:[/dim] {resolved_output}")
 
-    with console.status("[bold cyan]Analyzing technology stack...[/bold cyan]", spinner="dots"):
+    with ui.status("[bold cyan]Analyzing technology stack...[/bold cyan]", spinner="dots"):
         stack = StackParser(repo_path).parse()
 
-    with console.status("[bold cyan]Parsing AI rules...[/bold cyan]", spinner="dots"):
+    with ui.status("[bold cyan]Parsing AI rules...[/bold cyan]", spinner="dots"):
         rules = RulesParser(repo_path).parse()
 
-    with console.status("[bold cyan]Reading git history...[/bold cyan]", spinner="dots"):
+    with ui.status("[bold cyan]Reading git history...[/bold cyan]", spinner="dots"):
         git_log = GitLogParser(repo_path).parse()
 
-    with console.status("[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"):
+    with ui.status("[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"):
         risks = RisksParser(repo_path, dependencies=stack["dependencies"]).parse()
 
-    output_path = repo / output
-    ReportGenerator(repo_path, stack, rules, git_log, risks).write_report(output_path)
+    generator = ReportGenerator(repo_path, stack, rules, git_log, risks)
+
+    if write_to_stdout:
+        content = generator.generate_json() if format == "json" else generator.generate()
+        sys.stdout.write(content)
+    elif format == "json":
+        output_path = repo / resolved_output
+        generator.write_json_report(output_path)
+    else:
+        output_path = repo / resolved_output
+        generator.write_report(output_path)
 
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("Languages found", str(len(stack["languages"])))
     table.add_row("Risks identified", str(_count_risks(risks)))
-    table.add_row("Report file", str(output_path.resolve()))
-    console.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
+    report_destination = "(stdout)" if write_to_stdout else str((repo / resolved_output).resolve())
+    table.add_row("Report file", report_destination)
+    ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from click.testing import CliRunner
 
@@ -12,6 +13,14 @@ def test_main_help() -> None:
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
     assert "Audit AI-generated repositories" in result.output
+
+
+def test_scan_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "--help"])
+    assert result.exit_code == 0
+    assert "--format" in result.output
+    assert "--output" in result.output
 
 
 def test_main_version() -> None:
@@ -89,3 +98,57 @@ def test_scan_no_git_folder(tmp_path: Path) -> None:
     assert result.exit_code == 0
     report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
     assert "No commits detected yet. Repository is at point zero." in report
+
+
+def test_scan_format_json_default_output(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert (tmp_path / "REBRIEF.json").is_file()
+    assert not (tmp_path / "REBRIEF.md").is_file()
+
+
+def test_scan_format_json_custom_output(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["scan", str(tmp_path), "-f", "json", "-o", "report.json"],
+    )
+
+    assert result.exit_code == 0
+    assert (tmp_path / "report.json").is_file()
+
+
+def test_scan_stdout_json(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-f", "json", "-o", "-"])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / "REBRIEF.json").is_file()
+    json_start = result.output.find("{")
+    assert json_start >= 0
+    payload = json.loads(result.output[json_start:])
+    assert "version" in payload
+    assert "tech_stack" in payload
+
+
+def test_scan_stdout_markdown(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-o", "-"])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / "REBRIEF.md").is_file()
+    assert "# REBRIEF REPORT:" in result.output

@@ -11,7 +11,7 @@ function readCommentBody() {
   return fs.readFileSync(commentPath, "utf8");
 }
 
-async function findExistingComment(issueNumber) {
+async function findExistingComment(github, context, issueNumber) {
   const { owner, repo } = context.repo;
   let page = 1;
 
@@ -59,7 +59,7 @@ module.exports = async ({ core, github, context }) => {
 
   const { owner, repo } = context.repo;
   const issueNumber = pullRequest.number;
-  const existing = await findExistingComment(issueNumber);
+  const existing = await findExistingComment(github, context, issueNumber);
 
   if (existing) {
     await github.rest.issues.updateComment({

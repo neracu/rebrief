@@ -183,4 +183,6 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         github-token: ${{ inputs.github-token }}
-        script-file: ${{ github.action_path }}/post-comment.mjs
+        script: |
+          const postComment = require('${{ github.action_path }}/post-comment.mjs');
+          await postComment({ core, github, context });

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 from rebrief import __version__
+from rebrief.core.badge import build_badge
 from rebrief.core.confidence import Confidence, meets_threshold
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport
@@ -30,6 +31,8 @@ class ReportSummary(TypedDict):
     languages_count: int
     risks_count: int
     ai_instruction_files: list[str]
+    badge_url: str
+    badge_markdown: str
 
 
 class ReportTechStack(TypedDict):
@@ -111,12 +114,20 @@ class ReportGenerator:
         return len(self._filtered_risk_items())
 
     def to_dict(self) -> ReportPayload:
+        risk_map = self._risk_map_payload()
+        badge = build_badge(
+            critical=len(risk_map["critical"]),
+            warning=len(risk_map["warning"]),
+            info=len(risk_map["info"]),
+        )
         return {
             "version": __version__,
             "summary": {
                 "languages_count": len(self._stack["languages"]),
                 "risks_count": self.filtered_risk_count(),
                 "ai_instruction_files": sorted(self._rules),
+                "badge_url": badge["badge_url"],
+                "badge_markdown": badge["badge_markdown"],
             },
             "tech_stack": {
                 "languages": list(self._stack["languages"]),
@@ -142,7 +153,7 @@ class ReportGenerator:
                     for entry in self._git_log["top_modified_files"]
                 ],
             },
-            "risk_map": self._risk_map_payload(),
+            "risk_map": risk_map,
             "checklist": self._checklist_items(),
         }
 

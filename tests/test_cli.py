@@ -23,6 +23,15 @@ def test_scan_help() -> None:
     assert "--output" in result.output
     assert "--min-confidence" in result.output
     assert "-c" in result.output
+    assert "--inject-badge" in result.output
+
+
+def test_badge_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["badge", "--help"])
+    assert result.exit_code == 0
+    assert "--min-confidence" in result.output
+    assert "Shields.io" in result.output or "badge" in result.output.lower()
 
 
 def test_main_version() -> None:
@@ -179,3 +188,67 @@ def test_scan_min_confidence_low_includes_markers(tmp_path: Path) -> None:
     report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
     assert "TODO in app.py:1" in report
     assert "Risks identified    2" in result.output
+
+
+def test_badge_prints_markdown_and_html(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["badge", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "[![Rebrief](https://img.shields.io/badge/rebrief-" in result.output
+    assert '<a href="https://github.com/neracu/rebrief">' in result.output
+    assert '<img alt="Rebrief"' in result.output
+
+
+def test_scan_inject_badge_under_header(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "# Demo\n\nBody text stays.\n", encoding="utf-8"
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--inject-badge"])
+
+    assert result.exit_code == 0
+    readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    assert "<!-- REBRIEF-BADGE:START -->" in readme
+    assert "<!-- REBRIEF-BADGE:END -->" in readme
+    assert "[![Rebrief](https://img.shields.io/badge/rebrief-" in readme
+    assert "Body text stays." in readme
+    assert readme.index("# Demo") < readme.index("<!-- REBRIEF-BADGE:START -->")
+    assert "Badge injected" in result.output
+
+
+def test_scan_inject_badge_replaces_existing_markers(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "# Demo\n"
+        "\n"
+        "Before.\n"
+        "\n"
+        "<!-- REBRIEF-BADGE:START -->\n"
+        "[![Rebrief](https://img.shields.io/badge/rebrief-clean-brightgreen)]"
+        "(https://github.com/neracu/rebrief)\n"
+        "<!-- REBRIEF-BADGE:END -->\n"
+        "\n"
+        "After.\n",
+        encoding="utf-8",
+    )
+    # Force a warning risk (missing tests) so badge is yellow, not clean
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--inject-badge"])
+
+    assert result.exit_code == 0
+    readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    assert "Before." in readme
+    assert "After." in readme
+    assert readme.count("<!-- REBRIEF-BADGE:START -->") == 1
+    assert "rebrief-clean-brightgreen" not in readme
+    assert "rebrief-" in readme

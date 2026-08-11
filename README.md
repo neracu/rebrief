@@ -81,14 +81,40 @@ rebrief scan .
 rebrief scan /path/to/repo -o REBRIEF.md
 rebrief scan . -f json              # → REBRIEF.json
 rebrief scan . -f json -o -         # JSON to stdout (status on stderr)
+rebrief badge .                     # Shields.io Markdown + HTML to stdout
+rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .
 ```
 
 Scan the current directory (default) or any local path. Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout.
 
+### Status badges
+
+Generate a Shields.io badge from the current scan results:
+
+```bash
+rebrief badge .
+```
+
+Prints Markdown and HTML snippets to stdout. Colors reflect confidence-filtered risks: **brightgreen** (`clean`), **yellow** (`N risks` when only warnings/info), or **red** (`N critical`).
+
+To keep a live badge in your README, add marker comments (or let `--inject-badge` create them):
+
+```markdown
+<!-- REBRIEF-BADGE:START -->
+[![Rebrief](https://img.shields.io/badge/rebrief-clean-brightgreen)](https://github.com/neracu/rebrief)
+<!-- REBRIEF-BADGE:END -->
+```
+
+```bash
+rebrief scan . --inject-badge
+```
+
+If the markers are present, the content between them is replaced. If they are missing, the badge block is inserted under the primary `# Header` in `README.md`.
+
 ### JSON output
 
-For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose.
+For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url` and `badge_markdown` for the Shields.io snippet matching the scan.
 
 ```bash
 rebrief scan . -f json

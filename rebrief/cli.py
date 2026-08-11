@@ -7,7 +7,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from rebrief import __version__
-from rebrief.core.confidence import parse_min_confidence
+from rebrief.core.badge import BADGE_LINK, inject_readme_badge
+from rebrief.core.confidence import Confidence, parse_min_confidence
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
 from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import GitLogParser
@@ -51,6 +52,48 @@ def _prepare_repo(repo_path: Path) -> bool:
     except OSError as exc:
         console.print(f"[yellow]Warning:[/yellow] {exc}")
         return False
+
+
+def _build_generator(
+    repo_path: str | Path,
+    min_confidence: Confidence,
+    *,
+    ui: Console | None = None,
+) -> ReportGenerator:
+    """Run parsers and construct a ReportGenerator for the target repo."""
+    status_ui = ui or console
+    repo = str(repo_path)
+
+    with status_ui.status(
+        "[bold cyan]Analyzing technology stack...[/bold cyan]", spinner="dots"
+    ):
+        stack = StackParser(repo).parse()
+
+    with status_ui.status("[bold cyan]Parsing AI rules...[/bold cyan]", spinner="dots"):
+        rules = RulesParser(repo).parse()
+
+    with status_ui.status(
+        "[bold cyan]Reading git history...[/bold cyan]", spinner="dots"
+    ):
+        git_log = GitLogParser(repo).parse()
+
+    with status_ui.status(
+        "[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"
+    ):
+        risks = RisksParser(repo, dependencies=stack["dependencies"]).parse()
+
+    return ReportGenerator(
+        repo,
+        stack,
+        rules,
+        git_log,
+        risks,
+        min_confidence=min_confidence,
+    )
+
+
+def _badge_html(badge_url: str) -> str:
+    return f'<a href="{BADGE_LINK}"><img alt="Rebrief" src="{badge_url}"></a>'
 
 
 @click.group()
@@ -108,7 +151,19 @@ def init(repo_path: str) -> None:
     show_default=True,
     help="Minimum confidence level for risks included in the report.",
 )
-def scan(repo_path: str, format: str, output: str | None, min_confidence: str) -> None:
+@click.option(
+    "--inject-badge",
+    is_flag=True,
+    default=False,
+    help="Inject or update a Shields.io badge block in README.md.",
+)
+def scan(
+    repo_path: str,
+    format: str,
+    output: str | None,
+    min_confidence: str,
+    inject_badge: bool,
+) -> None:
     repo = Path(repo_path)
     resolved_output = output or _default_output(format)
     write_to_stdout = resolved_output == "-"
@@ -124,25 +179,10 @@ def scan(repo_path: str, format: str, output: str | None, min_confidence: str) -
     ui.print(f"  [dim]Format:[/dim] {format}")
     ui.print(f"  [dim]Output:[/dim] {resolved_output}")
 
-    with ui.status("[bold cyan]Analyzing technology stack...[/bold cyan]", spinner="dots"):
-        stack = StackParser(repo_path).parse()
-
-    with ui.status("[bold cyan]Parsing AI rules...[/bold cyan]", spinner="dots"):
-        rules = RulesParser(repo_path).parse()
-
-    with ui.status("[bold cyan]Reading git history...[/bold cyan]", spinner="dots"):
-        git_log = GitLogParser(repo_path).parse()
-
-    with ui.status("[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"):
-        risks = RisksParser(repo_path, dependencies=stack["dependencies"]).parse()
-
-    generator = ReportGenerator(
-        repo_path,
-        stack,
-        rules,
-        git_log,
-        risks,
-        min_confidence=parse_min_confidence(min_confidence),
+    generator = _build_generator(
+        repo,
+        parse_min_confidence(min_confidence),
+        ui=ui,
     )
 
     if write_to_stdout:
@@ -155,12 +195,49 @@ def scan(repo_path: str, format: str, output: str | None, min_confidence: str) -
         output_path = repo / resolved_output
         generator.write_report(output_path)
 
+    payload = generator.to_dict()
+    if inject_badge:
+        readme_path = inject_readme_badge(repo, payload["summary"]["badge_markdown"])
+        ui.print(f"  [dim]Badge injected into[/dim] {readme_path.resolve()}")
+
     table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_row("Languages found", str(len(stack["languages"])))
-    table.add_row("Risks identified", str(generator.filtered_risk_count()))
-    report_destination = "(stdout)" if write_to_stdout else str((repo / resolved_output).resolve())
+    table.add_row("Languages found", str(payload["summary"]["languages_count"]))
+    table.add_row("Risks identified", str(payload["summary"]["risks_count"]))
+    report_destination = (
+        "(stdout)" if write_to_stdout else str((repo / resolved_output).resolve())
+    )
     table.add_row("Report file", report_destination)
     ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
+
+@main.command()
+@click.argument("repo_path", type=click.Path(exists=True, file_okay=False), default=".")
+@click.option(
+    "--min-confidence",
+    "-c",
+    type=click.Choice(["high", "medium", "low"], case_sensitive=False),
+    default="medium",
+    show_default=True,
+    help="Minimum confidence level for risks included in the badge.",
+)
+def badge(repo_path: str, min_confidence: str) -> None:
+    """Print Shields.io Markdown and HTML badge snippets to stdout."""
+    ui = Console(file=sys.stderr)
+    repo = Path(repo_path)
+
+    if _prepare_repo(repo):
+        ui.print(
+            f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
+        )
+
+    ui.print(f"{_scan_prefix()}[bold cyan]Generating badge...[/bold cyan]")
+    generator = _build_generator(
+        repo,
+        parse_min_confidence(min_confidence),
+        ui=ui,
+    )
+    summary = generator.to_dict()["summary"]
+    sys.stdout.write(summary["badge_markdown"] + "\n")
+    sys.stdout.write(_badge_html(summary["badge_url"]) + "\n")
 
 
 if __name__ == "__main__":

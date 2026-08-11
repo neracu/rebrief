@@ -234,6 +234,8 @@ def test_to_dict_structure(tmp_path: Path) -> None:
         "languages_count",
         "risks_count",
         "ai_instruction_files",
+        "badge_url",
+        "badge_markdown",
     }
     assert set(payload["tech_stack"].keys()) == {
         "languages",
@@ -251,6 +253,14 @@ def test_to_dict_field_mapping(tmp_path: Path) -> None:
     assert payload["summary"]["languages_count"] == 1
     assert payload["summary"]["risks_count"] == 3
     assert payload["summary"]["ai_instruction_files"] == [".cursorrules", "CLAUDE.md"]
+    assert (
+        payload["summary"]["badge_url"]
+        == "https://img.shields.io/badge/rebrief-1%20critical-red"
+    )
+    assert payload["summary"]["badge_markdown"] == (
+        "[![Rebrief](https://img.shields.io/badge/rebrief-1%20critical-red)]"
+        "(https://github.com/neracu/rebrief)"
+    )
     assert payload["timeline"]["recent_commits"] == [
         {
             "hash": "a1b2c3d",

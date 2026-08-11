@@ -76,6 +76,62 @@ On the first `rebrief scan`, rebrief creates `.rebriefignore` automatically if i
 
 ---
 
+## GitHub Actions
+
+Run `rebrief scan` on pull requests and post a summarized risk report as a PR comment.
+
+### Set up in your repository
+
+Copy these files from this repo into yours:
+
+```
+.github/workflows/rebrief-ci.yml
+.github/actions/rebrief-action/
+```
+
+In consumer repos, **do not** set `use-local-package: true` — the action installs `rebrief` from PyPI. That option is only for development in this repository.
+
+### Use on a pull request
+
+1. Open a PR (not a draft).
+2. Add the **`rebrief`** label to the PR.
+3. The workflow runs and posts (or updates) a comment on the PR with the scan summary.
+
+Re-runs on new commits update the same comment instead of creating duplicates.
+
+In **this** repository, the workflow is label-gated — add `rebrief` to trigger it. See [`.github/actions/rebrief-action/README.md`](.github/actions/rebrief-action/README.md) for all inputs and workflow variants.
+
+```yaml
+name: rebrief
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    if: contains(github.event.pull_request.labels.*.name, 'rebrief')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required for git timeline and hotspots
+
+      - uses: ./.github/actions/rebrief-action
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          only-on-risk: false
+          skip-drafts: true
+```
+
+Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks are found.
+
+---
+
 ## Example Output
 
 ```markdown

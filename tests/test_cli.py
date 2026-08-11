@@ -2,6 +2,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from rebrief import __version__
 from rebrief.cli import main
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME
 
@@ -17,7 +18,7 @@ def test_main_version() -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
     assert result.exit_code == 0
-    assert "0.1.4" in result.output
+    assert __version__ in result.output
 
 
 def test_init_creates_rebriefignore(tmp_path: Path) -> None:

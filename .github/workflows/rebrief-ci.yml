@@ -1,0 +1,29 @@
+name: rebrief
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    if: >
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'rebrief')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/rebrief-action
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: .
+          post-comment: true
+          only-on-risk: false
+          skip-drafts: true
+          use-local-package: true

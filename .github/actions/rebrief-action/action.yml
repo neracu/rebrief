@@ -1,0 +1,186 @@
+name: rebrief
+description: Run rebrief scan and post or update a summarized PR comment
+branding:
+  icon: search
+  color: blue
+
+inputs:
+  github-token:
+    description: Token for posting PR comments
+    required: false
+    default: ${{ github.token }}
+  working-directory:
+    description: Directory to run rebrief in
+    required: false
+    default: .
+  post-comment:
+    description: Whether to post or update a PR comment
+    required: false
+    default: "true"
+  only-on-risk:
+    description: Only post a comment if WARNING or CRITICAL risks are found
+    required: false
+    default: "false"
+  skip-drafts:
+    description: Skip execution when the pull request is a draft
+    required: false
+    default: "true"
+  python-version:
+    description: Python version for setup-python
+    required: false
+    default: "3.12"
+  rebrief-version:
+    description: Optional pip pin (for example rebrief==0.1.4). Ignored when use-local-package is true.
+    required: false
+    default: ""
+  use-local-package:
+    description: Install rebrief from the checked-out repository instead of PyPI
+    required: false
+    default: "false"
+
+outputs:
+  report-path:
+    description: Path to the generated REBRIEF.md report
+    value: ${{ steps.paths.outputs.report-path }}
+  has-risks:
+    description: Whether WARNING or CRITICAL risks were found
+    value: ${{ steps.risks.outputs.has-risks }}
+  truncated:
+    description: Whether the PR comment body was truncated
+    value: ${{ steps.build.outputs.truncated }}
+  skipped:
+    description: Whether execution was skipped (draft PR)
+    value: ${{ steps.draft-check.outputs.skip }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check draft pull request
+      id: draft-check
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const skipDrafts = '${{ inputs.skip-drafts }}' === 'true';
+          const isDraft = context.payload.pull_request?.draft === true;
+          const skip = skipDrafts && isDraft;
+          if (skip) {
+            core.info('Skipping rebrief on draft pull request.');
+          }
+          core.setOutput('skip', skip ? 'true' : 'false');
+
+    - name: Set report paths
+      id: paths
+      if: steps.draft-check.outputs.skip != 'true'
+      shell: bash
+      run: |
+        working_dir="${{ inputs.working-directory }}"
+        report_path="${working_dir%/}/REBRIEF.md"
+        echo "report-path=${report_path}" >> "$GITHUB_OUTPUT"
+        echo "comment-body-path=${RUNNER_TEMP}/rebrief-comment.md" >> "$GITHUB_OUTPUT"
+        echo "truncated-flag-path=${RUNNER_TEMP}/rebrief-truncated" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Python
+      if: steps.draft-check.outputs.skip != 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install rebrief
+      if: steps.draft-check.outputs.skip != 'true'
+      shell: bash
+      run: |
+        if [ "${{ inputs.use-local-package }}" = "true" ]; then
+          pip install "${GITHUB_WORKSPACE}"
+        elif [ -n "${{ inputs.rebrief-version }}" ]; then
+          pip install "${{ inputs.rebrief-version }}"
+        else
+          pip install rebrief
+        fi
+
+    - name: Run rebrief scan
+      id: scan
+      if: steps.draft-check.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: rebrief scan .
+
+    - name: Verify report exists
+      if: steps.draft-check.outputs.skip != 'true'
+      shell: bash
+      run: |
+        if [ ! -f "${{ steps.paths.outputs.report-path }}" ]; then
+          echo "::error::REBRIEF.md was not generated at ${{ steps.paths.outputs.report-path }}"
+          exit 1
+        fi
+
+    - name: Check for risks
+      id: risks
+      if: steps.draft-check.outputs.skip != 'true' && inputs.post-comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        set +e
+        python -m rebrief.ci.comment has-risks \
+          --report-path "${{ steps.paths.outputs.report-path }}" \
+          --output "${RUNNER_TEMP}/rebrief-has-risks"
+        exit_code=$?
+        set -e
+
+        if [ -f "${RUNNER_TEMP}/rebrief-has-risks" ]; then
+          echo "has-risks=$(cat "${RUNNER_TEMP}/rebrief-has-risks")" >> "$GITHUB_OUTPUT"
+        else
+          echo "has-risks=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        if [ "${{ inputs.only-on-risk }}" = "true" ] && [ "$exit_code" -ne 0 ]; then
+          echo "skip-comment=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::only-on-risk is enabled and no WARNING/CRITICAL risks were found. Skipping comment post."
+        else
+          echo "skip-comment=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Build PR comment
+      id: build
+      if: steps.draft-check.outputs.skip != 'true' && inputs.post-comment == 'true' && github.event_name == 'pull_request' && steps.risks.outputs.skip-comment != 'true'
+      shell: bash
+      env:
+        REPORT_PATH: ${{ steps.paths.outputs.report-path }}
+        COMMENT_BODY_PATH: ${{ steps.paths.outputs.comment-body-path }}
+        TRUNCATED_FLAG_PATH: ${{ steps.paths.outputs.truncated-flag-path }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        python -m rebrief.ci.comment build \
+          --report-path "${REPORT_PATH}" \
+          --output "${COMMENT_BODY_PATH}" \
+          --commit-sha "${GITHUB_SHA}" \
+          --run-url "${RUN_URL}" \
+          --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --truncated-flag "${TRUNCATED_FLAG_PATH}"
+
+        if [ -f "${TRUNCATED_FLAG_PATH}" ]; then
+          echo "truncated=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "truncated=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Notice for non-pull-request events
+      if: steps.draft-check.outputs.skip != 'true' && inputs.post-comment == 'true' && github.event_name != 'pull_request'
+      shell: bash
+      run: echo "::notice::post-comment is enabled, but this is not a pull_request event. Skipping comment post."
+
+    - name: Upload full report artifact
+      if: steps.draft-check.outputs.skip != 'true' && steps.build.outputs.truncated == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: rebrief-report
+        path: ${{ steps.paths.outputs.report-path }}
+        if-no-files-found: error
+
+    - name: Post or update PR comment
+      if: steps.draft-check.outputs.skip != 'true' && inputs.post-comment == 'true' && github.event_name == 'pull_request' && steps.risks.outputs.skip-comment != 'true'
+      uses: actions/github-script@v7
+      env:
+        COMMENT_BODY_PATH: ${{ steps.paths.outputs.comment-body-path }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script-file: ${{ github.action_path }}/post-comment.mjs

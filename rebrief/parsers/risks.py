@@ -6,7 +6,7 @@ import os
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Iterator, TypedDict
+from typing import Iterator, Sequence, TypedDict
 
 from rebrief.core.confidence import Confidence
 from rebrief.core.ignore import IgnoreMatcher
@@ -200,10 +200,18 @@ class RiskReport(TypedDict):
 
 
 class RisksParser:
-    def __init__(self, repo_path: str, dependencies: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        repo_path: str,
+        dependencies: list[str] | None = None,
+        paths: Sequence[str] | None = None,
+    ) -> None:
         self._repo_path = Path(repo_path)
         self._dependencies = dependencies
         self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._paths = (
+            {path.replace("\\", "/") for path in paths} if paths is not None else None
+        )
 
     def parse(self) -> RiskReport:
         markers: list[MarkerFinding] = []
@@ -242,6 +250,18 @@ class RisksParser:
         return False
 
     def _iter_text_files(self) -> Iterator[Path]:
+        if self._paths is not None:
+            for relative in sorted(self._paths):
+                file_path = self._repo_path / relative
+                if not file_path.is_file():
+                    continue
+                if self._is_skippable_file(relative, file_path.name):
+                    continue
+                if self._is_binary(file_path):
+                    continue
+                yield file_path
+            return
+
         for root, dirs, files in os.walk(self._repo_path):
             root_path = Path(root)
             relative_root = root_path.relative_to(self._repo_path).as_posix()
@@ -339,11 +359,15 @@ class RisksParser:
             return []
 
         conflicts: list[DependencyConflict] = []
-        conflicts.extend(self._check_requirements_conflicts())
-        conflicts.extend(self._check_package_json_conflicts())
+        if self._paths is None or "requirements.txt" in self._paths:
+            conflicts.extend(self._check_requirements_conflicts())
+        if self._paths is None or "package.json" in self._paths:
+            conflicts.extend(self._check_package_json_conflicts())
         return sorted(conflicts, key=lambda item: item["package"])
 
     def _has_dependency_manifests(self) -> bool:
+        if self._paths is not None:
+            return "requirements.txt" in self._paths or "package.json" in self._paths
         return (self._repo_path / "requirements.txt").is_file() or (
             self._repo_path / "package.json"
         ).is_file()

@@ -7,12 +7,14 @@ from typing import Literal, TypedDict
 from rebrief import __version__
 from rebrief.core.badge import build_badge
 from rebrief.core.confidence import Confidence, meets_threshold
+from rebrief.core.diff import DiffScope, count_tracked_files
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
 
 Severity = Literal["critical", "warning", "info"]
+ScanMode = Literal["full", "incremental"]
 
 
 class ReportCommit(TypedDict):
@@ -33,6 +35,8 @@ class ReportSummary(TypedDict):
     ai_instruction_files: list[str]
     badge_url: str
     badge_markdown: str
+    files_scanned: int
+    files_total: int
 
 
 class ReportTechStack(TypedDict):
@@ -60,6 +64,8 @@ class ReportRiskMap(TypedDict):
 
 class ReportPayload(TypedDict):
     version: str
+    mode: ScanMode
+    diff_ref: str | None
     summary: ReportSummary
     tech_stack: ReportTechStack
     timeline: ReportTimeline
@@ -82,6 +88,7 @@ class ReportGenerator:
         git_log: GitLogResult,
         risks: RiskReport,
         min_confidence: Confidence = Confidence.MEDIUM,
+        diff_scope: DiffScope | None = None,
     ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
@@ -89,6 +96,7 @@ class ReportGenerator:
         self._git_log = git_log
         self._risks = risks
         self._min_confidence = min_confidence
+        self._diff_scope = diff_scope
 
     def generate(self) -> str:
         sections = [
@@ -113,6 +121,12 @@ class ReportGenerator:
     def filtered_risk_count(self) -> int:
         return len(self._filtered_risk_items())
 
+    def _file_counts(self) -> tuple[int, int]:
+        if self._diff_scope is not None:
+            return self._diff_scope["files_scanned"], self._diff_scope["files_total"]
+        total = count_tracked_files(self._repo_path)
+        return total, total
+
     def to_dict(self) -> ReportPayload:
         risk_map = self._risk_map_payload()
         badge = build_badge(
@@ -120,14 +134,19 @@ class ReportGenerator:
             warning=len(risk_map["warning"]),
             info=len(risk_map["info"]),
         )
+        files_scanned, files_total = self._file_counts()
         return {
             "version": __version__,
+            "mode": "incremental" if self._diff_scope is not None else "full",
+            "diff_ref": self._diff_scope["ref"] if self._diff_scope is not None else None,
             "summary": {
                 "languages_count": len(self._stack["languages"]),
                 "risks_count": self.filtered_risk_count(),
                 "ai_instruction_files": sorted(self._rules),
                 "badge_url": badge["badge_url"],
                 "badge_markdown": badge["badge_markdown"],
+                "files_scanned": files_scanned,
+                "files_total": files_total,
             },
             "tech_stack": {
                 "languages": list(self._stack["languages"]),
@@ -238,6 +257,11 @@ class ReportGenerator:
         return {"critical": critical, "warning": warning, "info": info}
 
     def _title(self) -> str:
+        if self._diff_scope is not None:
+            return (
+                f"# REBRIEF INCREMENTAL REPORT "
+                f"(Diff against {self._diff_scope['ref']})"
+            )
         return f"# REBRIEF REPORT: {self._repo_path.name}"
 
     def _section_overview(self) -> str:
@@ -261,6 +285,12 @@ class ReportGenerator:
             "## 1. Project Overview (Executive Summary)",
             f"- {impression}",
         ]
+
+        if self._diff_scope is not None:
+            lines.append(
+                f"- Files scanned in diff: {self._diff_scope['files_scanned']} / "
+                f"Total files: {self._diff_scope['files_total']}."
+            )
 
         if self._rules:
             lines.append(
@@ -380,10 +410,16 @@ class ReportGenerator:
             items.append(f"Set up the development environment for {framework}.")
 
         for entry in self._git_log["top_modified_files"]:
-            items.append(
-                "Review frequently changed file: "
-                f"{entry['file']} ({entry['count']} edits in 30 days)."
-            )
+            if self._diff_scope is not None:
+                items.append(
+                    "Review changed file in diff: "
+                    f"{entry['file']} ({entry['count']} line changes)."
+                )
+            else:
+                items.append(
+                    "Review frequently changed file: "
+                    f"{entry['file']} ({entry['count']} edits in 30 days)."
+                )
 
         if not items:
             items.append("Review the sections above and validate the project setup.")

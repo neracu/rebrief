@@ -179,3 +179,25 @@ def test_git_init_no_commits_returns_point_zero_message(tmp_path: Path) -> None:
     assert result["commits"] == []
     assert result["top_modified_files"] == []
     assert result["status_message"] == POINT_ZERO_MESSAGE
+
+
+def test_diff_ref_hotspots_use_numstat(tmp_path: Path) -> None:
+    def _git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    _git("init")
+    _git("config", "user.email", "test@example.com")
+    _git("config", "user.name", "Test User")
+    _git("checkout", "-b", "main")
+    (tmp_path / "a.py").write_text("print(1)\n", encoding="utf-8")
+    _git("add", "a.py")
+    _git("commit", "-m", "Add a")
+    (tmp_path / "b.py").write_text("line1\nline2\nline3\n", encoding="utf-8")
+    _git("add", "b.py")
+    _git("commit", "-m", "Add b")
+
+    result = GitLogParser(str(tmp_path), diff_ref="HEAD~1").parse()
+
+    assert result["status_message"] is None
+    assert any(entry["file"] == "b.py" for entry in result["top_modified_files"])
+    assert all(entry["file"] != "a.py" for entry in result["top_modified_files"])

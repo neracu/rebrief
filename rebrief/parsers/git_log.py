@@ -48,12 +48,16 @@ def _empty_result(status_message: str | None = None) -> GitLogResult:
 
 
 class GitLogParser:
-    def __init__(self, repo_path: str) -> None:
+    def __init__(self, repo_path: str, diff_ref: str | None = None) -> None:
         self._repo_path = Path(repo_path)
+        self._diff_ref = diff_ref
 
     def parse(self) -> GitLogResult:
         if not (self._repo_path / ".git").exists():
             return _empty_result(POINT_ZERO_MESSAGE)
+
+        if self._diff_ref is not None:
+            return self._parse_diff_range()
 
         try:
             log_output = self._run_git(
@@ -79,6 +83,40 @@ class GitLogParser:
             self._parse_commits(log_output)
         )[:MAX_COMMITS_RETURN]
         top_modified_files = self._parse_churn(churn_output)
+
+        return {
+            "commits": commits,
+            "top_modified_files": top_modified_files,
+            "status_message": None,
+        }
+
+    def _parse_diff_range(self) -> GitLogResult:
+        assert self._diff_ref is not None
+        range_spec = f"{self._diff_ref}...HEAD"
+        try:
+            log_output = self._run_git(
+                [
+                    "log",
+                    range_spec,
+                    f"--pretty=format:%h|%an|%ad|%s",
+                    "--date=short",
+                    f"-n{MAX_COMMITS_FETCH}",
+                ]
+            )
+            numstat_output = self._run_git(
+                [
+                    "diff",
+                    "--numstat",
+                    range_spec,
+                ]
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return _empty_result(POINT_ZERO_MESSAGE)
+
+        commits = self._collapse_iteration_series(
+            self._parse_commits(log_output)
+        )[:MAX_COMMITS_RETURN]
+        top_modified_files = self._parse_numstat(numstat_output)
 
         return {
             "commits": commits,
@@ -175,6 +213,40 @@ class GitLogParser:
             for line in raw.splitlines()
             if line.strip()
         )
+
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return [
+            {"file": path, "count": count}
+            for path, count in ranked[:MAX_CHURN_FILES]
+        ]
+
+    def _parse_numstat(self, raw: str) -> list[ModifiedFile]:
+        counts: Counter[str] = Counter()
+
+        for line in raw.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            parts = stripped.split("\t")
+            if len(parts) < 3:
+                continue
+            added_raw, deleted_raw, path = parts[0], parts[1], parts[2]
+            # Binary files show "-" for counts; skip deleted-only missing paths later.
+            if added_raw == "-" or deleted_raw == "-":
+                continue
+            try:
+                changes = int(added_raw) + int(deleted_raw)
+            except ValueError:
+                continue
+            if changes <= 0:
+                continue
+            # Renames may appear as "old => new"; take the new side.
+            if " => " in path:
+                path = path.split(" => ", 1)[1]
+            path = path.replace("\\", "/")
+            if not (self._repo_path / path).is_file():
+                continue
+            counts[path] += changes
 
         ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
         return [

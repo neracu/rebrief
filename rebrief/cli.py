@@ -9,6 +9,7 @@ from rich.table import Table
 from rebrief import __version__
 from rebrief.core.badge import BADGE_LINK, inject_readme_badge
 from rebrief.core.confidence import Confidence, parse_min_confidence
+from rebrief.core.diff import DiffError, DiffScope, resolve_diff_scope
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
 from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import GitLogParser
@@ -59,15 +60,18 @@ def _build_generator(
     min_confidence: Confidence,
     *,
     ui: Console | None = None,
+    diff_scope: DiffScope | None = None,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     status_ui = ui or console
     repo = str(repo_path)
+    paths = diff_scope["files"] if diff_scope is not None else None
+    diff_ref = diff_scope["ref"] if diff_scope is not None else None
 
     with status_ui.status(
         "[bold cyan]Analyzing technology stack...[/bold cyan]", spinner="dots"
     ):
-        stack = StackParser(repo).parse()
+        stack = StackParser(repo, paths=paths).parse()
 
     with status_ui.status("[bold cyan]Parsing AI rules...[/bold cyan]", spinner="dots"):
         rules = RulesParser(repo).parse()
@@ -75,12 +79,14 @@ def _build_generator(
     with status_ui.status(
         "[bold cyan]Reading git history...[/bold cyan]", spinner="dots"
     ):
-        git_log = GitLogParser(repo).parse()
+        git_log = GitLogParser(repo, diff_ref=diff_ref).parse()
 
     with status_ui.status(
         "[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"
     ):
-        risks = RisksParser(repo, dependencies=stack["dependencies"]).parse()
+        risks = RisksParser(
+            repo, dependencies=stack["dependencies"], paths=paths
+        ).parse()
 
     return ReportGenerator(
         repo,
@@ -89,6 +95,7 @@ def _build_generator(
         git_log,
         risks,
         min_confidence=min_confidence,
+        diff_scope=diff_scope,
     )
 
 
@@ -157,12 +164,22 @@ def init(repo_path: str) -> None:
     default=False,
     help="Inject or update a Shields.io badge block in README.md.",
 )
+@click.option(
+    "--diff",
+    "diff_ref",
+    type=str,
+    is_flag=False,
+    flag_value="HEAD~1",
+    default=None,
+    help="Incremental scan against a git ref (default ref: HEAD~1).",
+)
 def scan(
     repo_path: str,
     format: str,
     output: str | None,
     min_confidence: str,
     inject_badge: bool,
+    diff_ref: str | None,
 ) -> None:
     repo = Path(repo_path)
     resolved_output = output or _default_output(format)
@@ -174,15 +191,26 @@ def scan(
             f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
         )
 
+    diff_scope: DiffScope | None = None
+    if diff_ref is not None:
+        try:
+            diff_scope = resolve_diff_scope(repo, diff_ref)
+        except DiffError as exc:
+            ui.print(f"[red]Error:[/red] {exc}")
+            raise SystemExit(1) from exc
+
     ui.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
     ui.print(f"  [dim]Path:[/dim]   {repo_path}")
     ui.print(f"  [dim]Format:[/dim] {format}")
     ui.print(f"  [dim]Output:[/dim] {resolved_output}")
+    if diff_scope is not None:
+        ui.print(f"  [dim]Diff:[/dim]   {diff_scope['ref']}...HEAD")
 
     generator = _build_generator(
         repo,
         parse_min_confidence(min_confidence),
         ui=ui,
+        diff_scope=diff_scope,
     )
 
     if write_to_stdout:
@@ -201,6 +229,15 @@ def scan(
         ui.print(f"  [dim]Badge injected into[/dim] {readme_path.resolve()}")
 
     table = Table(show_header=False, box=None, padding=(0, 2))
+    if diff_scope is not None:
+        table.add_row(
+            "Mode",
+            f"incremental (diff against {diff_scope['ref']})",
+        )
+        table.add_row(
+            "Files scanned",
+            f"{diff_scope['files_scanned']} / {diff_scope['files_total']}",
+        )
     table.add_row("Languages found", str(payload["summary"]["languages_count"]))
     table.add_row("Risks identified", str(payload["summary"]["risks_count"]))
     report_destination = (

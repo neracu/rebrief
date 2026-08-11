@@ -24,6 +24,7 @@ def test_scan_help() -> None:
     assert "--min-confidence" in result.output
     assert "-c" in result.output
     assert "--inject-badge" in result.output
+    assert "--diff" in result.output
 
 
 def test_badge_help() -> None:
@@ -252,3 +253,78 @@ def test_scan_inject_badge_replaces_existing_markers(tmp_path: Path) -> None:
     assert readme.count("<!-- REBRIEF-BADGE:START -->") == 1
     assert "rebrief-clean-brightgreen" not in readme
     assert "rebrief-" in readme
+
+
+def _init_git_repo(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "init"], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "-b", "main"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_scan_diff_mode_json(tmp_path: Path) -> None:
+    import subprocess
+
+    _init_git_repo(tmp_path)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "a.py").write_text("print(1)\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "."], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    (tmp_path / "b.py").write_text("# TODO: ship it\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "b.py"], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add b"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["scan", str(tmp_path), "--diff", "-f", "json", "-o", "-"]
+    )
+
+    assert result.exit_code == 0, result.output
+    json_start = result.output.find("{")
+    assert json_start != -1
+    payload = json.loads(result.output[json_start:])
+    assert payload["mode"] == "incremental"
+    assert payload["diff_ref"] == "HEAD~1"
+    assert payload["summary"]["files_scanned"] == 1
+    assert payload["summary"]["files_total"] == 2
+
+
+def test_scan_diff_not_a_git_repo(tmp_path: Path) -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--diff"])
+
+    assert result.exit_code == 1
+    assert "Not a git repository" in result.output

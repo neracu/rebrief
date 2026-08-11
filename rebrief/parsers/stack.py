@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterator, TypedDict
+from typing import Iterator, Sequence, TypedDict
 
 from rebrief.core.ignore import IgnoreMatcher
 from rebrief.parsers.manifests import (
@@ -81,9 +81,16 @@ class StackResult(TypedDict):
 
 
 class StackParser:
-    def __init__(self, repo_path: str) -> None:
+    def __init__(
+        self,
+        repo_path: str,
+        paths: Sequence[str] | None = None,
+    ) -> None:
         self._repo_path = Path(repo_path)
         self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._paths = (
+            [path.replace("\\", "/") for path in paths] if paths is not None else None
+        )
 
     def parse(self) -> StackResult:
         is_empty = not any(True for _ in self._walk_files())
@@ -114,6 +121,13 @@ class StackParser:
 
     def _walk_files(self) -> Iterator[Path]:
         if not self._repo_path.is_dir():
+            return
+
+        if self._paths is not None:
+            for relative in sorted(self._paths):
+                file_path = self._repo_path / relative
+                if file_path.is_file():
+                    yield file_path
             return
 
         for root, dirs, files in os.walk(self._repo_path):

@@ -7,6 +7,24 @@
 
 A local CLI that scans any codebase and produces a structured `REBRIEF.md` report in ~30 seconds - stack, context, history, risks, and a where-to-start checklist.
 
+## Navigation
+
+- [Demo](#demo)
+- [The Pain](#the-pain)
+- [Before vs. After](#before-vs-after)
+- [Key Features](#key-features)
+  - [Stack detection](#stack-detection)
+- [Installation & Quick Start](#installation--quick-start)
+  - [Status badges](#status-badges)
+  - [JSON output](#json-output)
+  - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
+- [GitHub Actions](#github-actions)
+  - [Set up in your repository](#set-up-in-your-repository)
+  - [Use on a pull request](#use-on-a-pull-request)
+- [Example Output](#example-output)
+- [AI Prompting](#ai-prompting)
+- [License](#license)
+
 ## Demo
 
 ```bash
@@ -81,12 +99,16 @@ rebrief scan .
 rebrief scan /path/to/repo -o REBRIEF.md
 rebrief scan . -f json              # → REBRIEF.json
 rebrief scan . -f json -o -         # JSON to stdout (status on stderr)
+rebrief scan . --diff               # incremental vs HEAD~1
+rebrief scan . --diff origin/main   # incremental vs PR/base ref
 rebrief badge .                     # Shields.io Markdown + HTML to stdout
 rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .
 ```
 
 Scan the current directory (default) or any local path. Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout.
+
+Use `--diff [REF]` for an incremental scan of only files changed since a git ref (default `HEAD~1`). Stack, risk, and hotspot analysis run against that file list; structural checks such as a `tests/` directory remain repo-wide. Incremental Markdown reports are titled `REBRIEF INCREMENTAL REPORT`, and JSON includes `"mode": "incremental"`, `"diff_ref"`, plus `summary.files_scanned` / `summary.files_total`.
 
 ### Status badges
 
@@ -114,7 +136,7 @@ If the markers are present, the content between them is replaced. If they are mi
 
 ### JSON output
 
-For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url` and `badge_markdown` for the Shields.io snippet matching the scan.
+For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, and file-count fields (`files_scanned`, `files_total`) for full and incremental scans.
 
 ```bash
 rebrief scan . -f json

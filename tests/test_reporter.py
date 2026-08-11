@@ -224,18 +224,24 @@ def test_to_dict_structure(tmp_path: Path) -> None:
     assert payload["version"] == __version__
     assert set(payload.keys()) == {
         "version",
+        "mode",
+        "diff_ref",
         "summary",
         "tech_stack",
         "timeline",
         "risk_map",
         "checklist",
     }
+    assert payload["mode"] == "full"
+    assert payload["diff_ref"] is None
     assert set(payload["summary"].keys()) == {
         "languages_count",
         "risks_count",
         "ai_instruction_files",
         "badge_url",
         "badge_markdown",
+        "files_scanned",
+        "files_total",
     }
     assert set(payload["tech_stack"].keys()) == {
         "languages",
@@ -245,6 +251,36 @@ def test_to_dict_structure(tmp_path: Path) -> None:
     }
     assert set(payload["timeline"].keys()) == {"recent_commits", "hotspots"}
     assert set(payload["risk_map"].keys()) == {"critical", "warning", "info"}
+
+
+def test_incremental_report_metadata(tmp_path: Path) -> None:
+    from rebrief.core.diff import DiffScope
+
+    stack, rules, git_log, risks = make_report_data()
+    scope: DiffScope = {
+        "ref": "origin/main",
+        "files": ["a.py", "b.py", "c.py", "d.py"],
+        "files_scanned": 4,
+        "files_total": 128,
+    }
+    generator = ReportGenerator(
+        str(tmp_path / "demo-repo"),
+        stack,
+        rules,
+        git_log,
+        risks,
+        diff_scope=scope,
+    )
+
+    report = generator.generate()
+    payload = generator.to_dict()
+
+    assert "# REBRIEF INCREMENTAL REPORT (Diff against origin/main)" in report
+    assert "Files scanned in diff: 4 / Total files: 128." in report
+    assert payload["mode"] == "incremental"
+    assert payload["diff_ref"] == "origin/main"
+    assert payload["summary"]["files_scanned"] == 4
+    assert payload["summary"]["files_total"] == 128
 
 
 def test_to_dict_field_mapping(tmp_path: Path) -> None:

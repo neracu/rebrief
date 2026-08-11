@@ -47,6 +47,7 @@ rebrief scan .
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
 - **Noise-Filtered Git Archaeology** - Filters low-value commits (wip, fix typo, minor updates) to surface a cleaner timeline of meaningful changes and 30-day change-density hotspots.
 - **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. No cloud upload, no API keys.
+- **Markdown or JSON output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload (stack, timeline, risks, checklist) for scripts and tooling.
 
 ---
 
@@ -59,10 +60,24 @@ pip install rebrief
 ```bash
 rebrief scan .
 rebrief scan /path/to/repo -o REBRIEF.md
+rebrief scan . -f json              # → REBRIEF.json
+rebrief scan . -f json -o -         # JSON to stdout (status on stderr)
 rebrief init .
 ```
 
-Scan the current directory (default) or any local path. Output defaults to `REBRIEF.md` in the target repo.
+Scan the current directory (default) or any local path. Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout.
+
+### JSON output
+
+For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose.
+
+```bash
+rebrief scan . -f json
+rebrief scan . -f json -o report.json
+rebrief scan . -f json -o - > REBRIEF.json
+```
+
+The `version` field matches the installed rebrief package version. GitHub Actions and `rebrief.ci.comment` still expect Markdown (`REBRIEF.md`); use JSON locally or in custom pipelines.
 
 ### Excluding paths with `.rebriefignore`
 

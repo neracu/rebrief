@@ -21,6 +21,7 @@ def make_report_data() -> tuple[
         "frameworks": ["Django"],
         "dependencies": ["click>=8.1", "django==4.2"],
         "is_empty": False,
+        "manifest_warnings": [],
     }
     rules: dict[str, RuleFileEntry] = {
         ".cursorrules": {"content": "# Rules", "lines_count": 12},
@@ -136,6 +137,7 @@ def test_generate_empty_repo_overview(tmp_path: Path) -> None:
         "frameworks": [],
         "dependencies": [],
         "is_empty": True,
+        "manifest_warnings": [],
     }
     git_log: GitLogResult = {
         "commits": [],
@@ -181,6 +183,7 @@ def test_generate_monorepo_manifests(tmp_path: Path) -> None:
         "frameworks": ["Django"],
         "dependencies": ["django==4.2"],
         "is_empty": False,
+        "manifest_warnings": [],
     }
     git_log: GitLogResult = {
         "commits": [],
@@ -258,6 +261,7 @@ def test_to_dict_empty_risks(tmp_path: Path) -> None:
         "frameworks": [],
         "dependencies": [],
         "is_empty": False,
+        "manifest_warnings": [],
     }
     git_log: GitLogResult = {
         "commits": [],
@@ -277,11 +281,74 @@ def test_to_dict_empty_risks(tmp_path: Path) -> None:
     assert payload["summary"]["risks_count"] == 0
 
 
+def test_manifest_warning_in_risk_map(tmp_path: Path) -> None:
+    stack: StackResult = {
+        "languages": ["PHP"],
+        "manifests": ["composer.json"],
+        "frameworks": [],
+        "dependencies": [],
+        "is_empty": False,
+        "manifest_warnings": [
+            "Malformed manifest: composer.json (Could not parse composer.json: ...)"
+        ],
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": None,
+    }
+    risks: RiskReport = {
+        "missing_tests": False,
+        "markers": [],
+        "secrets": [],
+        "dependency_conflicts": [],
+    }
+    generator = ReportGenerator(str(tmp_path / "warn-repo"), stack, {}, git_log, risks)
+    payload = generator.to_dict()
+
+    assert payload["summary"]["risks_count"] == 1
+    assert "Malformed manifest: composer.json" in payload["risk_map"]["warning"][0]
+
+
 def test_generate_json_valid(tmp_path: Path) -> None:
     payload = json.loads(_make_generator(tmp_path).generate_json())
 
     assert payload["version"] == __version__
     assert payload["tech_stack"]["languages"] == ["Python"]
+
+
+def test_tech_stack_frameworks_in_json_output(tmp_path: Path) -> None:
+    frameworks = ["Axum", "Echo", "Express", "Flask", "React", "Sinatra", "Slim", "Vite"]
+    stack: StackResult = {
+        "languages": ["Go", "JavaScript/TypeScript", "PHP", "Python", "Ruby", "Rust"],
+        "manifests": [
+            "Cargo.toml",
+            "composer.json",
+            "Gemfile",
+            "go.mod",
+            "package.json",
+            "requirements.txt",
+        ],
+        "frameworks": frameworks,
+        "dependencies": [],
+        "is_empty": False,
+        "manifest_warnings": [],
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": None,
+    }
+    risks: RiskReport = {
+        "missing_tests": False,
+        "markers": [],
+        "secrets": [],
+        "dependency_conflicts": [],
+    }
+    generator = ReportGenerator(str(tmp_path / "multi-stack"), stack, {}, git_log, risks)
+    payload = generator.to_dict()
+
+    assert payload["tech_stack"]["frameworks"] == frameworks
 
 
 def test_write_json_report_creates_file(tmp_path: Path) -> None:

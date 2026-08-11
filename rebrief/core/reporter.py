@@ -137,6 +137,7 @@ class ReportGenerator:
             + (1 if self._risks["missing_tests"] else 0)
             + len(self._risks["dependency_conflicts"])
             + len(self._risks["markers"])
+            + len(self._stack["manifest_warnings"])
         )
 
     def _title(self) -> str:
@@ -253,6 +254,8 @@ class ReportGenerator:
                 f"Duplicate dependency `{conflict['package']}` "
                 f"with conflicting versions: {versions}."
             )
+
+        warnings.extend(self._stack["manifest_warnings"])
 
         return warnings
 

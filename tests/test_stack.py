@@ -6,11 +6,19 @@ from rebrief.parsers.stack import StackParser
 def test_empty_repo(tmp_path: Path) -> None:
     result = StackParser(str(tmp_path)).parse()
 
-    assert set(result.keys()) == {"languages", "manifests", "frameworks", "dependencies", "is_empty"}
+    assert set(result.keys()) == {
+        "languages",
+        "manifests",
+        "frameworks",
+        "dependencies",
+        "is_empty",
+        "manifest_warnings",
+    }
     assert result["languages"] == []
     assert result["manifests"] == []
     assert result["frameworks"] == []
     assert result["dependencies"] == []
+    assert result["manifest_warnings"] == []
     assert result["is_empty"] is True
 
 
@@ -248,3 +256,218 @@ def test_monorepo_all_manifests(tmp_path: Path) -> None:
     assert result["languages"] == ["Go", "JavaScript/TypeScript", "Python", "Rust"]
     assert result["is_empty"] is False
     assert "Django" in result["frameworks"]
+    assert result["manifest_warnings"] == []
+
+
+def test_go_mod_dependencies(tmp_path: Path) -> None:
+    (tmp_path / "go.mod").write_text(
+        "module example.com/demo\n"
+        "go 1.22\n"
+        "require github.com/gin-gonic/gin v1.9.0\n",
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "github.com/gin-gonic/gin" in result["dependencies"]
+
+
+def test_cargo_toml_dependencies(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "demo"\nversion = "0.1.0"\n'
+        '[dependencies]\nserde = "1.0"\naxum = "0.7"\n',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "serde" in result["dependencies"]
+    assert "axum" in result["dependencies"]
+
+
+def test_pom_xml_spring_boot_framework(tmp_path: Path) -> None:
+    (tmp_path / "pom.xml").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+""",
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["Java"]
+    assert "spring-boot-starter-web" in result["dependencies"]
+    assert "Spring Boot" in result["frameworks"]
+
+
+def test_build_gradle_kts_quarkus(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle.kts").write_text(
+        'dependencies {\n'
+        '    implementation("io.quarkus:quarkus-resteasy-reactive:3.6.0")\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["Kotlin"]
+    assert "Quarkus" in result["frameworks"]
+
+
+def test_composer_json_laravel(tmp_path: Path) -> None:
+    (tmp_path / "composer.json").write_text(
+        '{"require": {"laravel/framework": "^10.0"}}',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["PHP"]
+    assert "laravel/framework" in result["dependencies"]
+    assert "Laravel" in result["frameworks"]
+
+
+def test_gemfile_rails(tmp_path: Path) -> None:
+    (tmp_path / "Gemfile").write_text("gem 'rails', '~> 7.1'\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["Ruby"]
+    assert "rails" in result["dependencies"]
+    assert "Rails" in result["frameworks"]
+
+
+def test_malformed_composer_json_warning(tmp_path: Path) -> None:
+    (tmp_path / "composer.json").write_text(
+        '{"require": {"broken":',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["dependencies"] == []
+    assert len(result["manifest_warnings"]) == 1
+    assert "composer.json" in result["manifest_warnings"][0]
+
+
+def test_vue_in_package_json(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"dependencies": {"vue": "^3.4.0"}}',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Vue" in result["frameworks"]
+
+
+def test_fastapi_in_requirements(tmp_path: Path) -> None:
+    (tmp_path / "requirements.txt").write_text("fastapi==0.109.0\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "FastAPI" in result["frameworks"]
+
+
+def test_gin_in_go_mod(tmp_path: Path) -> None:
+    (tmp_path / "go.mod").write_text(
+        "module example.com/demo\n"
+        "require github.com/gin-gonic/gin v1.9.0\n",
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Gin" in result["frameworks"]
+
+
+def test_actix_web_in_cargo(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "demo"\nversion = "0.1.0"\n'
+        '[dependencies]\nactix-web = "4"\n',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Actix Web" in result["frameworks"]
+
+
+def test_artisan_laravel_signature(tmp_path: Path) -> None:
+    (tmp_path / "artisan").write_text("#!/usr/bin/env php\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Laravel" in result["frameworks"]
+
+
+def test_sinatra_in_gemfile(tmp_path: Path) -> None:
+    (tmp_path / "Gemfile").write_text("gem 'sinatra', '~> 3.0'\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Sinatra" in result["frameworks"]
+
+
+def test_angular_json_signature(tmp_path: Path) -> None:
+    (tmp_path / "angular.json").write_text("{}", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Angular" in result["frameworks"]
+
+
+def test_no_false_positive_vue_router(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"dependencies": {"vue-router": "^4.0.0"}}',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Vue" not in result["frameworks"]
+
+
+def test_multi_ecosystem_framework_detection(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"dependencies": {"react": "^18.0.0", "express": "^4.18.0"}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text("flask==3.0.0\n", encoding="utf-8")
+    (tmp_path / "go.mod").write_text(
+        "module example.com/demo\nrequire github.com/labstack/echo/v4 v4.11.0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "demo"\nversion = "0.1.0"\n'
+        '[dependencies]\naxum = "0.7"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "composer.json").write_text(
+        '{"require": {"slim/slim": "^4.0"}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "Gemfile").write_text("gem 'sinatra'\n", encoding="utf-8")
+    (tmp_path / "vite.config.ts").write_text("export default {}\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["frameworks"] == sorted(
+        [
+            "Axum",
+            "Echo",
+            "Express",
+            "Flask",
+            "React",
+            "Sinatra",
+            "Slim",
+            "Vite",
+        ]
+    )

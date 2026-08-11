@@ -12,7 +12,7 @@ from rebrief.core.reporter import ReportGenerator
 from rebrief.parsers.git_log import GitLogParser
 from rebrief.parsers.risks import RiskReport, RisksParser
 from rebrief.parsers.rules import RulesParser
-from rebrief.parsers.stack import StackParser
+from rebrief.parsers.stack import StackParser, StackResult
 
 
 def _configure_stdio() -> None:
@@ -39,10 +39,11 @@ _configure_stdio()
 console = Console()
 
 
-def _count_risks(risks: RiskReport) -> int:
+def _count_risks(risks: RiskReport, stack: StackResult) -> int:
     total = len(risks["markers"]) + len(risks["secrets"]) + len(risks["dependency_conflicts"])
     if risks["missing_tests"]:
         total += 1
+    total += len(stack["manifest_warnings"])
     return total
 
 
@@ -148,7 +149,7 @@ def scan(repo_path: str, format: str, output: str | None) -> None:
 
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row("Languages found", str(len(stack["languages"])))
-    table.add_row("Risks identified", str(_count_risks(risks)))
+    table.add_row("Risks identified", str(_count_risks(risks, stack)))
     report_destination = "(stdout)" if write_to_stdout else str((repo / resolved_output).resolve())
     table.add_row("Report file", report_destination)
     ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))

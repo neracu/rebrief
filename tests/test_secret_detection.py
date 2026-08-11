@@ -168,6 +168,7 @@ def test_secret_findings_in_critical_section() -> None:
         "frameworks": [],
         "dependencies": [],
         "is_empty": False,
+        "manifest_warnings": [],
     }
     git_log: GitLogResult = {
         "commits": [],

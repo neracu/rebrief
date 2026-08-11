@@ -43,11 +43,30 @@ rebrief scan .
 
 ## Key Features
 
-- **Deep Stack & Manifest Detection** - Recursive scan for `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, and more. Detects languages and frameworks (Django, React, Next.js, Go, and others) across mono-repos and nested layouts.
+- **Deep Stack & Manifest Detection** - Recursive scan for ecosystem manifests across JavaScript/TypeScript, Python, Go, Rust, Java, Kotlin, PHP, and Ruby — including mono-repos and nested layouts. Parses dependencies, infers frameworks, and flags malformed manifests as warnings.
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
 - **Noise-Filtered Git Archaeology** - Filters low-value commits (wip, fix typo, minor updates) to surface a cleaner timeline of meaningful changes and 30-day change-density hotspots.
 - **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. No cloud upload, no API keys.
 - **Markdown or JSON output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload (stack, timeline, risks, checklist) for scripts and tooling.
+
+### Stack detection
+
+rebrief walks the repo (up to three directory levels) and looks for common manifest files:
+
+| Ecosystem | Manifests | Framework signals |
+| --------- | --------- | ----------------- |
+| JavaScript / TypeScript | `package.json` | React (`react`), Next.js (`next`, `next.config.js` / `.mjs`), Vue (`vue`), Angular (`@angular/core`, `angular.json`), Svelte (`svelte`, `svelte.config.js`), Express (`express`), NestJS (`@nestjs/core`), Remix (`@remix-run/node`, `remix.config.js`), Vite (`vite.config.js` / `.ts`), Nuxt.js (`nuxt.config.js` / `.ts`) |
+| Python | `requirements.txt`, `pyproject.toml`, `poetry.lock` | Django (`django`, `manage.py`), Django REST Framework (`djangorestframework`), FastAPI (`fastapi`), Flask (`flask`) |
+| Go | `go.mod` | Gin (`gin-gonic/gin`), Echo (`labstack/echo`), Fiber (`gofiber/fiber`) |
+| Rust | `Cargo.toml` | Actix Web (`actix-web`), Axum (`axum`), Rocket (`rocket`) |
+| Java | `pom.xml`, `build.gradle` | Spring Boot (`spring-boot`), Quarkus (`quarkus`), Micronaut (`micronaut`) |
+| Kotlin | `build.gradle.kts` | Spring Boot (`spring-boot`), Quarkus (`quarkus`), Micronaut (`micronaut`) |
+| PHP | `composer.json` | Laravel (`laravel/framework`, `artisan`), Symfony (`symfony/framework-bundle`), Slim (`slim/slim`) |
+| Ruby | `Gemfile` | Rails (`rails`), Sinatra (`sinatra`) |
+
+Each parser extracts direct dependencies from the manifest (for example `require` lines in `go.mod`, `[dependencies]` in `Cargo.toml`, or `require` in `composer.json`). Dependency-based framework detection uses exact matching for simple package names and substring matching for module coordinates (Go import paths, Maven/Gradle coordinates, Composer packages). Signature files such as `manage.py`, `artisan`, and `angular.json` are detected by filename alone.
+
+If a manifest cannot be parsed, the scan continues and the report lists a **WARNING** for that file instead of failing the whole run.
 
 ---
 

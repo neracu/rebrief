@@ -16,9 +16,11 @@ def test_default_dirs_always_ignored(tmp_path: Path) -> None:
 
     assert matcher.is_ignored("node_modules/lib/index.js", is_dir=False) is True
     assert matcher.is_ignored(".next/server/page.js", is_dir=False) is True
+    assert matcher.is_ignored(".rebrief/cache.json", is_dir=False) is True
     assert matcher.is_ignored("__pycache__/module.pyc", is_dir=False) is True
     assert matcher.should_prune_dir("node_modules", "") is True
     assert matcher.should_prune_dir(".next", "frontend") is True
+    assert matcher.should_prune_dir(".rebrief", "") is True
 
 
 def test_rebriefignore_custom_pattern(tmp_path: Path) -> None:
@@ -59,6 +61,7 @@ def test_ensure_rebriefignore_creates_file(tmp_path: Path) -> None:
     content = (tmp_path / REBRIEFIGNORE_FILENAME).read_text(encoding="utf-8")
     assert content == DEFAULT_REBRIEFIGNORE_CONTENT
     assert "node_modules/" in content
+    assert ".rebrief/" in content
     assert "# Dependencies and package managers" in content
 
 

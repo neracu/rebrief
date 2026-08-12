@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 
+import pytest
 from click.testing import CliRunner
 
 from rebrief import __version__
@@ -328,3 +329,92 @@ def test_scan_diff_not_a_git_repo(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Not a git repository" in result.output
+
+
+def test_main_help_lists_mcp() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "mcp" in result.output
+    assert "server" in result.output
+
+
+def test_mcp_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["mcp", "--help"])
+    assert result.exit_code == 0
+    assert "install" in result.output
+    assert "stdio" in result.output.lower() or "MCP" in result.output
+
+
+def test_server_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["server", "--help"])
+    assert result.exit_code == 0
+    assert "mcp" in result.output.lower() or "stdio" in result.output.lower()
+
+
+def test_mcp_install_prints_json() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["mcp", "install"])
+    assert result.exit_code == 0
+    assert '"mcpServers"' in result.output
+    assert '"rebrief"' in result.output
+    assert '"args": [' in result.output
+    assert "mcp" in result.output
+    assert "claude mcp add rebrief" in result.output
+    assert "--write" in result.output
+
+
+def test_mcp_install_write_cursor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / ".cursor"
+    existing.mkdir()
+    (existing / "mcp.json").write_text(
+        '{"mcpServers": {"other": {"command": "echo"}}}\n',
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["mcp", "install", "--client", "cursor", "--write"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads((tmp_path / ".cursor" / "mcp.json").read_text(encoding="utf-8"))
+    assert payload["mcpServers"]["other"]["command"] == "echo"
+    assert payload["mcpServers"]["rebrief"] == {"command": "rebrief", "args": ["mcp"]}
+
+
+def test_mcp_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> None:
+        raise ImportError("No module named 'mcp'")
+
+    monkeypatch.setattr("rebrief.cli._import_mcp_run_stdio", boom)
+    runner = CliRunner()
+    result = runner.invoke(main, ["mcp"])
+    assert result.exit_code == 1
+    assert "rebrief[mcp]" in result.output
+
+
+def test_mcp_starts_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    called = {"n": 0}
+
+    def fake_run() -> None:
+        called["n"] += 1
+
+    monkeypatch.setattr("rebrief.cli._import_mcp_run_stdio", lambda: fake_run)
+    runner = CliRunner()
+    result = runner.invoke(main, ["mcp"])
+    assert result.exit_code == 0, result.output
+    assert called["n"] == 1
+
+
+def test_server_alias_starts_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    called = {"n": 0}
+
+    def fake_run() -> None:
+        called["n"] += 1
+
+    monkeypatch.setattr("rebrief.cli._import_mcp_run_stdio", lambda: fake_run)
+    runner = CliRunner()
+    result = runner.invoke(main, ["server"])
+    assert result.exit_code == 0, result.output
+    assert called["n"] == 1
+

@@ -48,9 +48,15 @@ def _empty_result(status_message: str | None = None) -> GitLogResult:
 
 
 class GitLogParser:
-    def __init__(self, repo_path: str, diff_ref: str | None = None) -> None:
+    def __init__(
+        self,
+        repo_path: str,
+        diff_ref: str | None = None,
+        max_churn_files: int = MAX_CHURN_FILES,
+    ) -> None:
         self._repo_path = Path(repo_path)
         self._diff_ref = diff_ref
+        self._max_churn_files = max_churn_files
 
     def parse(self) -> GitLogResult:
         if not (self._repo_path / ".git").exists():
@@ -217,7 +223,7 @@ class GitLogParser:
         ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
         return [
             {"file": path, "count": count}
-            for path, count in ranked[:MAX_CHURN_FILES]
+            for path, count in ranked[: self._max_churn_files]
         ]
 
     def _parse_numstat(self, raw: str) -> list[ModifiedFile]:
@@ -251,5 +257,5 @@ class GitLogParser:
         ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
         return [
             {"file": path, "count": count}
-            for path, count in ranked[:MAX_CHURN_FILES]
+            for path, count in ranked[: self._max_churn_files]
         ]

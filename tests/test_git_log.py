@@ -144,6 +144,34 @@ def test_parses_top_modified_files(mock_run: MagicMock, tmp_path: Path) -> None:
 
 
 @patch("rebrief.parsers.git_log.subprocess.run")
+def test_max_churn_files_limit(mock_run: MagicMock, tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    churn_stdout = "\n".join(
+        [
+            "a.py",
+            "a.py",
+            "b.py",
+            "b.py",
+            "c.py",
+            "d.py",
+            "e.py",
+            "f.py",
+        ]
+    )
+    mock_run.side_effect = _mock_run_side_effect("", churn_stdout)
+
+    limited = GitLogParser(str(tmp_path), max_churn_files=3).parse()
+    default = GitLogParser(str(tmp_path)).parse()
+
+    assert [entry["file"] for entry in limited["top_modified_files"]] == [
+        "a.py",
+        "b.py",
+        "c.py",
+    ]
+    assert len(default["top_modified_files"]) == 5
+
+
+@patch("rebrief.parsers.git_log.subprocess.run")
 def test_git_failure_returns_empty(mock_run: MagicMock, tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     mock_run.side_effect = FileNotFoundError("git not found")

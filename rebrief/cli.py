@@ -12,10 +12,7 @@ from rebrief.core.confidence import Confidence, parse_min_confidence
 from rebrief.core.diff import DiffError, DiffScope, resolve_diff_scope
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
 from rebrief.core.reporter import ReportGenerator
-from rebrief.parsers.git_log import GitLogParser
-from rebrief.parsers.risks import RisksParser
-from rebrief.parsers.rules import RulesParser
-from rebrief.parsers.stack import StackParser
+from rebrief.core.scan import run_scan
 
 
 def _configure_stdio() -> None:
@@ -64,38 +61,15 @@ def _build_generator(
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     status_ui = ui or console
-    repo = str(repo_path)
-    paths = diff_scope["files"] if diff_scope is not None else None
-    diff_ref = diff_scope["ref"] if diff_scope is not None else None
 
-    with status_ui.status(
-        "[bold cyan]Analyzing technology stack...[/bold cyan]", spinner="dots"
-    ):
-        stack = StackParser(repo, paths=paths).parse()
+    def status(message: str) -> object:
+        return status_ui.status(f"[bold cyan]{message}[/bold cyan]", spinner="dots")
 
-    with status_ui.status("[bold cyan]Parsing AI rules...[/bold cyan]", spinner="dots"):
-        rules = RulesParser(repo).parse()
-
-    with status_ui.status(
-        "[bold cyan]Reading git history...[/bold cyan]", spinner="dots"
-    ):
-        git_log = GitLogParser(repo, diff_ref=diff_ref).parse()
-
-    with status_ui.status(
-        "[bold cyan]Scanning for risks...[/bold cyan]", spinner="dots"
-    ):
-        risks = RisksParser(
-            repo, dependencies=stack["dependencies"], paths=paths
-        ).parse()
-
-    return ReportGenerator(
-        repo,
-        stack,
-        rules,
-        git_log,
-        risks,
-        min_confidence=min_confidence,
+    return run_scan(
+        repo_path,
+        min_confidence,
         diff_scope=diff_scope,
+        status=status,
     )
 
 
@@ -275,6 +249,58 @@ def badge(repo_path: str, min_confidence: str) -> None:
     summary = generator.to_dict()["summary"]
     sys.stdout.write(summary["badge_markdown"] + "\n")
     sys.stdout.write(_badge_html(summary["badge_url"]) + "\n")
+
+
+def _import_mcp_run_stdio() -> object:
+    from rebrief.mcp.server import run_stdio
+
+    return run_stdio
+
+
+def _run_mcp_server() -> None:
+    try:
+        run_stdio = _import_mcp_run_stdio()
+    except ImportError:
+        from rebrief.mcp import MCP_EXTRA_HINT
+
+        click.echo(MCP_EXTRA_HINT, err=True)
+        raise SystemExit(1)
+    run_stdio()
+
+
+@main.group(invoke_without_command=True)
+@click.pass_context
+def mcp(ctx: click.Context) -> None:
+    """Start an MCP server over stdio, or manage client configuration."""
+    if ctx.invoked_subcommand is None:
+        _run_mcp_server()
+
+
+@mcp.command("install")
+@click.option(
+    "--client",
+    type=click.Choice(["cursor", "claude", "windsurf", "roo", "all"], case_sensitive=False),
+    default="all",
+    show_default=True,
+    help="Which client config to print or write.",
+)
+@click.option(
+    "--write",
+    is_flag=True,
+    default=False,
+    help="Merge the rebrief MCP entry into the selected client config file(s).",
+)
+def mcp_install(client: str, write: bool) -> None:
+    """Print or inject MCP client configuration for popular IDEs."""
+    from rebrief.mcp.install import install_mcp_config
+
+    install_mcp_config(client=client.lower(), write=write)
+
+
+@main.command("server")
+def server() -> None:
+    """Alias for `rebrief mcp` — start an MCP server over stdio."""
+    _run_mcp_server()
 
 
 if __name__ == "__main__":

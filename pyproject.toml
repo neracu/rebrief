@@ -23,7 +23,8 @@ Issues = "https://github.com/neracu/rebrief/issues"
 rebrief = "rebrief.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "colorama>=0.4"]
+dev = ["pytest>=8.0", "colorama>=0.4", "mcp>=2.0,<3"]
+mcp = ["mcp>=2.0,<3"]
 publish = ["build>=1.0", "twine>=5.0"]
 
 [tool.setuptools.dynamic]
@@ -33,3 +34,6 @@ version = { attr = "rebrief.__version__" }
 where = ["."]
 include = ["rebrief*"]
 exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

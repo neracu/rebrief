@@ -53,5 +53,8 @@ Thumbs.db
 REBRIEF.md
 HANDOFF.md
 
+# MCP / scan cache
+.rebrief/
+
 # Generated when scanning this repo locally
 .rebriefignore

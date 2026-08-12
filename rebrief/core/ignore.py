@@ -9,6 +9,7 @@ DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset(
     {
         ".git",
         ".next",
+        ".rebrief",
         ".turbo",
         ".venv",
         "__pycache__",
@@ -34,6 +35,7 @@ DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     ".venv/",
     "env/",
     ".next/",
+    ".rebrief/",
     ".turbo/",
 )
 
@@ -61,6 +63,9 @@ venv/
 
 # Version control
 .git/
+
+# Rebrief cache
+.rebrief/
 """
 
 

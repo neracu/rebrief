@@ -18,6 +18,7 @@ A local CLI that scans any codebase and produces a structured `REBRIEF.md` repor
   - [Status badges](#status-badges)
   - [JSON output](#json-output)
   - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
+  - [MCP server](#mcp-server)
 - [GitHub Actions](#github-actions)
   - [Set up in your repository](#set-up-in-your-repository)
   - [Use on a pull request](#use-on-a-pull-request)
@@ -104,6 +105,8 @@ rebrief scan . --diff origin/main   # incremental vs PR/base ref
 rebrief badge .                     # Shields.io Markdown + HTML to stdout
 rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .
+rebrief mcp                         # MCP stdio server (requires rebrief[mcp])
+rebrief mcp install                 # print IDE MCP config
 ```
 
 Scan the current directory (default) or any local path. Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout.
@@ -148,13 +151,53 @@ The `version` field matches the installed rebrief package version. GitHub Action
 
 ### Excluding paths with `.rebriefignore`
 
-rebrief skips common noise by default (`node_modules`, `.git`, `dist`, `build`, `.next`, `__pycache__`, `.venv`, and similar). To exclude more paths, add a `.rebriefignore` file at the repo root using standard `.gitignore` syntax (globs, `#` comments, one pattern per line).
+rebrief skips common noise by default (`node_modules`, `.git`, `dist`, `build`, `.next`, `.rebrief`, `__pycache__`, `.venv`, and similar). To exclude more paths, add a `.rebriefignore` file at the repo root using standard `.gitignore` syntax (globs, `#` comments, one pattern per line).
 
 ```bash
 rebrief init .   # create a starter .rebriefignore
 ```
 
 On the first `rebrief scan`, rebrief creates `.rebriefignore` automatically if it is missing. Patterns in that file supplement the built-in defaults — they do not replace them.
+
+### MCP server
+
+AI agents (Claude Code, Cursor, Windsurf, Roo Code) can query stack, risks, hotspots, and the full `REBRIEF.md` summary over [Model Context Protocol](https://modelcontextprotocol.io/) stdio.
+
+```bash
+pip install "rebrief[mcp]"
+rebrief mcp            # start the stdio server
+rebrief server         # alias for `rebrief mcp`
+rebrief mcp install    # print client JSON (add --write to merge into config files)
+```
+
+If the extra is not installed, `rebrief mcp` exits with install instructions. Repeated tool calls in one agent session are served from an in-memory cache plus `.rebrief/cache.json` (file fingerprint), so unchanged repos skip a rescan.
+
+**Tools:** `get_repository_brief`, `get_risk_map`, `get_codebase_hotspots`, `get_tech_stack`
+
+**Resource:** `rebrief://summary` — latest markdown brief for the working directory
+
+**Prompt:** `rebrief_context` — pre-packaged instruction that injects the Rebrief summary
+
+Cursor / Windsurf snippet (`.cursor/mcp.json` or `mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "rebrief": {
+      "command": "rebrief",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Claude Code:
+
+```bash
+claude mcp add rebrief -- rebrief mcp
+```
+
+`rebrief mcp install --write` merges that entry into Cursor (`.cursor/mcp.json`), Windsurf (`.windsurf/mcp.json`), Roo (`.roo/mcp.json`), and Claude Desktop (`claude_desktop_config.json`) without removing other servers.
 
 ---
 
@@ -267,6 +310,8 @@ After generating `REBRIEF.md`, point your AI assistant at it before diving into 
 ```text
 Read REBRIEF.md before starting to understand the project's architecture and hotspots.
 ```
+
+With MCP enabled, bind the `rebrief://summary` resource or run the `rebrief_context` prompt so the model receives the latest architectural hotspots and risks without a manual file read.
 
 This gives the model a structured overview of the stack, risks, and where to start - so you spend less time re-explaining the repo on every session.
 

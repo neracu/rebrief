@@ -4,8 +4,8 @@ Thank you for considering a contribution. **rebrief** is a local CLI that scans 
 
 **Philosophy:** keep it local, lightning-fast, and minimal on dependencies.
 
-- **Local-first** - everything runs on your machine. No cloud uploads, no API keys.
-- **Lightning-fast** - static file walks, regex scans, and a single `git` subprocess.
+- **Local-first** - everything runs on your machine. No cloud uploads, no API keys. Remote `scan` targets are shallow-cloned (`--depth 100`) into a temporary directory and deleted after the report is written.
+- **Lightning-fast** - static file walks, regex scans, and a single `git` subprocess (plus one `git clone` when the target is a remote URL).
 - **Minimal dependencies** - runtime requires only `click` and `rich`. MCP server mode is an optional extra (`pip install "rebrief[mcp]"`).
 
 ## How to Help

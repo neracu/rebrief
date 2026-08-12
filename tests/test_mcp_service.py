@@ -1,8 +1,11 @@
 from pathlib import Path
+from contextlib import contextmanager
+from collections.abc import Iterator
 import subprocess
 
 import pytest
 
+from rebrief.core.remote import CLONE_ERROR_MESSAGE, RemoteCloneError, RemoteTarget
 from rebrief.mcp.service import ScanService, format_rebrief_context
 
 
@@ -77,6 +80,56 @@ def test_get_codebase_hotspots_rejects_non_positive_top_n(tmp_path: Path) -> Non
 def test_invalid_path_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         ScanService().get_tech_stack(str(tmp_path / "does-not-exist"))
+
+
+def test_get_repository_brief_accepts_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_repo(tmp_path)
+    calls = {"n": 0}
+
+    @contextmanager
+    def fake_clone(target: RemoteTarget, **kwargs: object) -> Iterator[Path]:
+        calls["n"] += 1
+        assert target.clone_url == "https://github.com/owner/repo"
+        yield tmp_path
+
+    monkeypatch.setattr("rebrief.mcp.service.temporary_clone", fake_clone)
+    service = ScanService()
+    markdown = service.get_repository_brief("https://github.com/owner/repo")
+    assert markdown.startswith("# REBRIEF REPORT:")
+    service.get_repository_brief("https://github.com/owner/repo")
+    assert calls["n"] == 1
+    service.get_repository_brief("https://github.com/owner/repo", force_refresh=True)
+    assert calls["n"] == 2
+
+
+def test_get_repository_brief_accepts_shorthand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_repo(tmp_path)
+
+    @contextmanager
+    def fake_clone(target: RemoteTarget, **kwargs: object) -> Iterator[Path]:
+        assert target.display_name == "owner/repo"
+        yield tmp_path
+
+    monkeypatch.setattr("rebrief.mcp.service.temporary_clone", fake_clone)
+    markdown = ScanService().get_repository_brief("owner/repo")
+    assert "REBRIEF" in markdown
+
+
+def test_get_repository_brief_remote_clone_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @contextmanager
+    def boom(target: RemoteTarget, **kwargs: object) -> Iterator[Path]:
+        raise RemoteCloneError(CLONE_ERROR_MESSAGE)
+        yield Path(".")  # pragma: no cover
+
+    monkeypatch.setattr("rebrief.mcp.service.temporary_clone", boom)
+    with pytest.raises(RemoteCloneError, match="Unable to access remote repository"):
+        ScanService().get_repository_brief("https://github.com/owner/repo")
 
 
 def test_format_rebrief_context_template() -> None:

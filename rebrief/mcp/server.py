@@ -14,7 +14,11 @@ def create_server(service: ScanService | None = None) -> MCPServer:
 
     @mcp.tool()
     def get_repository_brief(path: str = ".", force_refresh: bool = False) -> str:
-        """Run (or read cached) rebrief scan and return the full REBRIEF.md markdown."""
+        """Run (or read cached) rebrief scan and return the full REBRIEF.md markdown.
+
+        ``path`` may be a local directory, an HTTPS/SSH git URL, or GitHub
+        ``owner/repo`` shorthand.
+        """
         return scan.get_repository_brief(path, force_refresh=force_refresh)
 
     @mcp.tool(structured_output=True)

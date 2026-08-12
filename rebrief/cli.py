@@ -5,12 +5,19 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from rebrief import __version__
 from rebrief.core.badge import BADGE_LINK, inject_readme_badge
 from rebrief.core.confidence import Confidence, parse_min_confidence
 from rebrief.core.diff import DiffError, DiffScope, resolve_diff_scope
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
+from rebrief.core.remote import (
+    RemoteCloneError,
+    RemoteTarget,
+    resolve_remote_target,
+    temporary_clone,
+)
 from rebrief.core.reporter import ReportGenerator
 from rebrief.core.scan import run_scan
 
@@ -26,13 +33,25 @@ def _configure_stdio() -> None:
             pass
 
 
-def _scan_prefix() -> str:
+def _emoji_prefix(emoji: str, fallback: str = "> ") -> str:
     encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
     try:
-        "🔍".encode(encoding)
+        emoji.encode(encoding)
     except (UnicodeEncodeError, LookupError):
-        return "> "
-    return "🔍 "
+        return fallback
+    return f"{emoji} "
+
+
+def _scan_prefix() -> str:
+    return _emoji_prefix("🔍")
+
+
+def _fetch_prefix() -> str:
+    return _emoji_prefix("⏳")
+
+
+def _fetch_message(display_name: str) -> str:
+    return f"{_fetch_prefix()}Fetching remote repository [{display_name}]..."
 
 
 _configure_stdio()
@@ -41,6 +60,13 @@ console = Console()
 
 def _default_output(format: str) -> str:
     return "REBRIEF.json" if format == "json" else "REBRIEF.md"
+
+
+def _join_output(root: Path, resolved_output: str) -> Path:
+    output = Path(resolved_output)
+    if output.is_absolute():
+        return output
+    return root / output
 
 
 def _prepare_repo(repo_path: Path) -> bool:
@@ -108,8 +134,88 @@ def init(repo_path: str) -> None:
     )
 
 
+def _run_scan_command(
+    *,
+    repo: Path,
+    target_label: str,
+    format: str,
+    resolved_output: str,
+    write_to_stdout: bool,
+    min_confidence: str,
+    inject_badge: bool,
+    diff_ref: str | None,
+    ui: Console,
+    output_root: Path,
+    prepare_ignore: bool,
+) -> None:
+    if prepare_ignore and _prepare_repo(repo):
+        ui.print(
+            f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
+        )
+
+    diff_scope: DiffScope | None = None
+    if diff_ref is not None:
+        try:
+            diff_scope = resolve_diff_scope(repo, diff_ref)
+        except DiffError as exc:
+            ui.print(f"[red]Error:[/red] {exc}")
+            raise SystemExit(1) from exc
+
+    ui.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
+    ui.print(f"  [dim]Path:[/dim]   {target_label}")
+    ui.print(f"  [dim]Format:[/dim] {format}")
+    ui.print(f"  [dim]Output:[/dim] {resolved_output}")
+    if diff_scope is not None:
+        ui.print(f"  [dim]Diff:[/dim]   {diff_scope['ref']}...HEAD")
+
+    generator = _build_generator(
+        repo,
+        parse_min_confidence(min_confidence),
+        ui=ui,
+        diff_scope=diff_scope,
+    )
+
+    output_path: Path | None = None
+    if write_to_stdout:
+        content = generator.generate_json() if format == "json" else generator.generate()
+        sys.stdout.write(content)
+    else:
+        output_path = _join_output(output_root, resolved_output)
+        if format == "json":
+            generator.write_json_report(output_path)
+        else:
+            generator.write_report(output_path)
+
+    payload = generator.to_dict()
+    if inject_badge:
+        readme_path = inject_readme_badge(repo, payload["summary"]["badge_markdown"])
+        ui.print(f"  [dim]Badge injected into[/dim] {readme_path.resolve()}")
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    if diff_scope is not None:
+        table.add_row(
+            "Mode",
+            f"incremental (diff against {diff_scope['ref']})",
+        )
+        table.add_row(
+            "Files scanned",
+            f"{diff_scope['files_scanned']} / {diff_scope['files_total']}",
+        )
+    table.add_row("Languages found", str(payload["summary"]["languages_count"]))
+    table.add_row("Risks identified", str(payload["summary"]["risks_count"]))
+    report_destination = (
+        "(stdout)" if output_path is None else str(output_path.resolve())
+    )
+    table.add_row("Report file", report_destination)
+    ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
+
+
+def _clone_status(ui: Console, remote: RemoteTarget) -> object:
+    return ui.status(Text(_fetch_message(remote.display_name)), spinner="dots")
+
+
 @main.command()
-@click.argument("repo_path", type=click.Path(exists=True, file_okay=False), default=".")
+@click.argument("target", default=".")
 @click.option(
     "--format",
     "-f",
@@ -148,77 +254,66 @@ def init(repo_path: str) -> None:
     help="Incremental scan against a git ref (default ref: HEAD~1).",
 )
 def scan(
-    repo_path: str,
+    target: str,
     format: str,
     output: str | None,
     min_confidence: str,
     inject_badge: bool,
     diff_ref: str | None,
 ) -> None:
-    repo = Path(repo_path)
     resolved_output = output or _default_output(format)
     write_to_stdout = resolved_output == "-"
     ui = Console(file=sys.stderr) if write_to_stdout else console
 
-    if _prepare_repo(repo):
-        ui.print(
-            f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
-        )
-
-    diff_scope: DiffScope | None = None
-    if diff_ref is not None:
+    remote = resolve_remote_target(target)
+    if remote is not None:
+        if inject_badge:
+            ui.print(
+                "[yellow]Warning:[/yellow] --inject-badge is ignored for remote "
+                "repositories."
+            )
+        ui.print(_fetch_message(remote.display_name), markup=False)
         try:
-            diff_scope = resolve_diff_scope(repo, diff_ref)
-        except DiffError as exc:
+            with temporary_clone(remote, status=lambda: _clone_status(ui, remote)) as repo:
+                _run_scan_command(
+                    repo=repo,
+                    target_label=target,
+                    format=format,
+                    resolved_output=resolved_output,
+                    write_to_stdout=write_to_stdout,
+                    min_confidence=min_confidence,
+                    inject_badge=False,
+                    diff_ref=diff_ref,
+                    ui=ui,
+                    output_root=Path.cwd(),
+                    prepare_ignore=False,
+                )
+        except RemoteCloneError as exc:
             ui.print(f"[red]Error:[/red] {exc}")
             raise SystemExit(1) from exc
+        return
 
-    ui.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
-    ui.print(f"  [dim]Path:[/dim]   {repo_path}")
-    ui.print(f"  [dim]Format:[/dim] {format}")
-    ui.print(f"  [dim]Output:[/dim] {resolved_output}")
-    if diff_scope is not None:
-        ui.print(f"  [dim]Diff:[/dim]   {diff_scope['ref']}...HEAD")
+    repo = Path(target)
+    if not repo.is_dir():
+        ui.print(
+            f"[red]Error:[/red] Path does not exist or is not a directory: {target}"
+        )
+        raise SystemExit(1)
 
-    generator = _build_generator(
-        repo,
-        parse_min_confidence(min_confidence),
+    _run_scan_command(
+        repo=repo,
+        target_label=target,
+        format=format,
+        resolved_output=resolved_output,
+        write_to_stdout=write_to_stdout,
+        min_confidence=min_confidence,
+        inject_badge=inject_badge,
+        diff_ref=diff_ref,
         ui=ui,
-        diff_scope=diff_scope,
+        output_root=repo,
+        prepare_ignore=True,
     )
 
-    if write_to_stdout:
-        content = generator.generate_json() if format == "json" else generator.generate()
-        sys.stdout.write(content)
-    elif format == "json":
-        output_path = repo / resolved_output
-        generator.write_json_report(output_path)
-    else:
-        output_path = repo / resolved_output
-        generator.write_report(output_path)
-
-    payload = generator.to_dict()
-    if inject_badge:
-        readme_path = inject_readme_badge(repo, payload["summary"]["badge_markdown"])
-        ui.print(f"  [dim]Badge injected into[/dim] {readme_path.resolve()}")
-
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    if diff_scope is not None:
-        table.add_row(
-            "Mode",
-            f"incremental (diff against {diff_scope['ref']})",
-        )
-        table.add_row(
-            "Files scanned",
-            f"{diff_scope['files_scanned']} / {diff_scope['files_total']}",
-        )
-    table.add_row("Languages found", str(payload["summary"]["languages_count"]))
-    table.add_row("Risks identified", str(payload["summary"]["risks_count"]))
-    report_destination = (
-        "(stdout)" if write_to_stdout else str((repo / resolved_output).resolve())
-    )
-    table.add_row("Report file", report_destination)
-    ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
 
 @main.command()
 @click.argument("repo_path", type=click.Path(exists=True, file_okay=False), default=".")

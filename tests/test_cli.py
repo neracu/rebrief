@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -7,6 +8,7 @@ from click.testing import CliRunner
 from rebrief import __version__
 from rebrief.cli import main
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME
+from rebrief.core.remote import CLONE_ERROR_MESSAGE, RemoteCloneError
 
 
 def test_main_help() -> None:
@@ -20,6 +22,7 @@ def test_scan_help() -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])
     assert result.exit_code == 0
+    assert "TARGET" in result.output
     assert "--format" in result.output
     assert "--output" in result.output
     assert "--min-confidence" in result.output
@@ -329,6 +332,88 @@ def test_scan_diff_not_a_git_repo(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Not a git repository" in result.output
+
+
+def _seed_cloned_repo(dest: Path) -> None:
+    (dest / "tests").mkdir()
+    (dest / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+    (dest / "README.md").write_text("# demo\n", encoding="utf-8")
+
+
+def test_scan_remote_writes_to_cwd() -> None:
+    cloned: dict[str, Path] = {}
+
+    def fake_clone(url: str, dest: Path) -> None:
+        cloned["dest"] = dest
+        _seed_cloned_repo(dest)
+
+    runner = CliRunner()
+    with patch("rebrief.core.remote.clone_remote", fake_clone):
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["scan", "owner/repo"])
+            assert result.exit_code == 0, result.output
+            assert Path("REBRIEF.md").is_file()
+            assert "Fetching remote repository [owner/repo]" in result.output
+            assert cloned["dest"] not in (Path("REBRIEF.md").resolve().parents)
+
+    assert "dest" in cloned
+    assert not cloned["dest"].exists()
+
+
+def test_scan_remote_clone_failure() -> None:
+    def boom(url: str, dest: Path) -> None:
+        raise RemoteCloneError(CLONE_ERROR_MESSAGE)
+
+    runner = CliRunner()
+    with patch("rebrief.core.remote.clone_remote", boom):
+        result = runner.invoke(main, ["scan", "https://github.com/owner/repo"])
+    assert result.exit_code == 1
+    assert "Unable to access remote repository" in result.output
+    assert "authentication credentials" in result.output
+
+
+def test_scan_remote_ignores_inject_badge() -> None:
+    def fake_clone(url: str, dest: Path) -> None:
+        _seed_cloned_repo(dest)
+
+    runner = CliRunner()
+    with patch("rebrief.core.remote.clone_remote", fake_clone):
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["scan", "owner/repo", "--inject-badge"])
+            assert result.exit_code == 0, result.output
+            assert "--inject-badge is ignored" in result.output
+            assert Path("REBRIEF.md").is_file()
+
+
+def test_scan_missing_local_path() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", "not-a-directory"])
+    assert result.exit_code == 1
+    assert "does not exist" in result.output
+
+
+def test_scan_local_owner_repo_dir_not_cloned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "owner" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    def fail_clone(url: str, dest: Path) -> None:
+        raise AssertionError("local owner/repo should not be cloned")
+
+    runner = CliRunner()
+    with patch("rebrief.core.remote.clone_remote", fail_clone):
+        result = runner.invoke(main, ["scan", "owner/repo"])
+    assert result.exit_code == 0, result.output
+    assert (repo / "REBRIEF.md").is_file()
+    assert not (tmp_path / "REBRIEF.md").exists()
 
 
 def test_main_help_lists_mcp() -> None:

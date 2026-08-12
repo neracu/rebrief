@@ -18,6 +18,7 @@ A local CLI that scans any codebase and produces a structured `REBRIEF.md` repor
   - [Status badges](#status-badges)
   - [JSON output](#json-output)
   - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
+  - [Remote repositories](#remote-repositories)
   - [MCP server](#mcp-server)
 - [GitHub Actions](#github-actions)
   - [Set up in your repository](#set-up-in-your-repository)
@@ -34,7 +35,7 @@ rebrief scan .
 
 ![rebrief scan demo](assets/demo.gif)
 
-Point it at any local repo. rebrief walks the stack, rules, git history, and risks, then writes `REBRIEF.md` in the project root.
+Point it at any local repo or a remote Git URL. rebrief walks the stack, rules, git history, and risks, then writes `REBRIEF.md`.
 
 ---
 
@@ -98,6 +99,9 @@ pip install rebrief
 ```bash
 rebrief scan .
 rebrief scan /path/to/repo -o REBRIEF.md
+rebrief scan owner/repo             # GitHub shorthand → clone + scan
+rebrief scan https://github.com/owner/repo
+rebrief scan git@github.com:owner/repo.git
 rebrief scan . -f json              # → REBRIEF.json
 rebrief scan . -f json -o -         # JSON to stdout (status on stderr)
 rebrief scan . --diff               # incremental vs HEAD~1
@@ -109,7 +113,7 @@ rebrief mcp                         # MCP stdio server (requires rebrief[mcp])
 rebrief mcp install                 # print IDE MCP config
 ```
 
-Scan the current directory (default) or any local path. Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout.
+Scan the current directory (default), any local path, or a remote Git repository (HTTPS, SSH, or GitHub `owner/repo` shorthand). Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout. Local scans write the report inside the target repo; remote scans write it in the directory where you ran the command.
 
 Use `--diff [REF]` for an incremental scan of only files changed since a git ref (default `HEAD~1`). Stack, risk, and hotspot analysis run against that file list; structural checks such as a `tests/` directory remain repo-wide. Incremental Markdown reports are titled `REBRIEF INCREMENTAL REPORT`, and JSON includes `"mode": "incremental"`, `"diff_ref"`, plus `summary.files_scanned` / `summary.files_total`.
 
@@ -157,7 +161,24 @@ rebrief skips common noise by default (`node_modules`, `.git`, `dist`, `build`, 
 rebrief init .   # create a starter .rebriefignore
 ```
 
-On the first `rebrief scan`, rebrief creates `.rebriefignore` automatically if it is missing. Patterns in that file supplement the built-in defaults — they do not replace them.
+On the first `rebrief scan` of a local directory, rebrief creates `.rebriefignore` automatically if it is missing. Patterns in that file supplement the built-in defaults — they do not replace them.
+
+### Remote repositories
+
+`rebrief scan` accepts a Git URL or GitHub shorthand and shallow-clones into a temporary directory (`git clone --depth 100 --single-branch`), then deletes the clone when the scan finishes.
+
+```bash
+rebrief scan owner/repo
+rebrief scan https://github.com/owner/repo
+rebrief scan https://gitlab.com/group/repo
+rebrief scan git@github.com:owner/repo.git
+```
+
+`owner/repo` resolves to `https://github.com/owner/repo`. If that path already exists as a local directory, rebrief scans the directory instead of cloning.
+
+Private repositories use your local Git credentials (SSH keys, `gh` auth, credential helpers). You can also set `GITHUB_TOKEN` or `GIT_AUTH_TOKEN` for HTTPS clones. If the clone fails, rebrief exits with:
+
+`Error: Unable to access remote repository. Check the URL or your Git authentication credentials.`
 
 ### MCP server
 
@@ -170,9 +191,11 @@ rebrief server         # alias for `rebrief mcp`
 rebrief mcp install    # print client JSON (add --write to merge into config files)
 ```
 
-If the extra is not installed, `rebrief mcp` exits with install instructions. Repeated tool calls in one agent session are served from an in-memory cache plus `.rebrief/cache.json` (file fingerprint), so unchanged repos skip a rescan.
+If the extra is not installed, `rebrief mcp` exits with install instructions. Repeated tool calls in one agent session are served from an in-memory cache plus `.rebrief/cache.json` (file fingerprint), so unchanged local repos skip a rescan. Remote URL targets are cloned on demand and cached in memory for the server process (`force_refresh` re-clones).
 
 **Tools:** `get_repository_brief`, `get_risk_map`, `get_codebase_hotspots`, `get_tech_stack`
+
+Each tool takes `path`, which may be a local directory, an HTTPS/SSH git URL, or GitHub `owner/repo` shorthand.
 
 **Resource:** `rebrief://summary` — latest markdown brief for the working directory
 

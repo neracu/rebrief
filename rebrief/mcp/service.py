@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from rebrief.core.confidence import Confidence, meets_threshold, parse_min_confidence
+from rebrief.core.remote import RemoteTarget, resolve_remote_target, temporary_clone
 from rebrief.core.reporter import ReportHotspot, ReportRiskItem, ReportRiskMap, ReportTechStack
 from rebrief.core.scan import run_scan
 from rebrief.mcp.cache import (
@@ -66,6 +67,7 @@ class ScanService:
 
     def __init__(self, cache: ScanCache | None = None) -> None:
         self._cache = cache or ScanCache()
+        self._remote_memory: dict[str, CacheEntry] = {}
 
     def get_snapshot(
         self,
@@ -74,6 +76,12 @@ class ScanService:
         min_confidence: str = "medium",
         force_refresh: bool = False,
     ) -> CacheEntry:
+        remote = resolve_remote_target(path)
+        if remote is not None:
+            return self._snapshot_remote(
+                remote, min_confidence, force_refresh=force_refresh
+            )
+
         repo = resolve_repo_path(path)
         confidence = parse_min_confidence(min_confidence)
         fingerprint = compute_fingerprint(repo)
@@ -108,11 +116,37 @@ class ScanService:
     def get_tech_stack(self, path: str = ".") -> ReportTechStack:
         return entry_tech_stack(self.get_snapshot(path))
 
+    def _snapshot_remote(
+        self,
+        remote: RemoteTarget,
+        min_confidence: str,
+        *,
+        force_refresh: bool,
+    ) -> CacheEntry:
+        confidence = parse_min_confidence(min_confidence)
+        key = remote.clone_url
+        if not force_refresh:
+            cached = self._remote_memory.get(key)
+            if cached is not None and not _needs_rescan(cached, confidence):
+                return cached
+
+        with temporary_clone(remote) as repo:
+            entry = self._scan_and_store(
+                repo,
+                confidence,
+                f"remote:{key}",
+                persist=False,
+            )
+        self._remote_memory[key] = entry
+        return entry
+
     def _scan_and_store(
         self,
         repo: Path,
         confidence: Confidence,
         fingerprint: str,
+        *,
+        persist: bool = True,
     ) -> CacheEntry:
         generator = run_scan(
             repo,
@@ -128,7 +162,8 @@ class ScanService:
             "payload": payload,
             "hotspots": list(payload["timeline"]["hotspots"]),
         }
-        self._cache.put(repo, entry)
+        if persist:
+            self._cache.put(repo, entry)
         return entry
 
 

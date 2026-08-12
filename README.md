@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="rebrief" height="52">
+  <img src="assets/logo.png" alt="rebrief" height="72">
 </p>
 <p align="center">
   <a href="https://pypi.org/project/rebrief/"><img src="https://img.shields.io/pypi/v/rebrief.svg" alt="PyPI version"></a>

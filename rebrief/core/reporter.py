@@ -16,7 +16,7 @@ from rebrief.core.tokens import (
     format_savings_footnote,
 )
 from rebrief.parsers.git_log import GitLogResult
-from rebrief.parsers.risks import RiskReport
+from rebrief.parsers.risks import RiskReport, is_test_or_fixture_path
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
 
@@ -208,13 +208,27 @@ class ReportGenerator:
         items: list[_CollectedRiskItem] = []
 
         for entry in self._risks["secrets"]:
-            items.append(
-                {
-                    "severity": "critical",
-                    "message": f"Hard-coded secret in {entry['file']}:{entry['line']}",
-                    "confidence": entry["confidence"],
-                }
-            )
+            if is_test_or_fixture_path(entry["file"]):
+                items.append(
+                    {
+                        "severity": "warning",
+                        "message": (
+                            "Hard-coded secret-like value in test/example file "
+                            f"{entry['file']}:{entry['line']}"
+                        ),
+                        "confidence": entry["confidence"],
+                    }
+                )
+            else:
+                items.append(
+                    {
+                        "severity": "critical",
+                        "message": (
+                            f"Hard-coded secret in {entry['file']}:{entry['line']}"
+                        ),
+                        "confidence": entry["confidence"],
+                    }
+                )
 
         if self._risks["missing_tests"]:
             items.append(
@@ -290,7 +304,8 @@ class ReportGenerator:
                 f"# REBRIEF INCREMENTAL REPORT "
                 f"(Diff against {self._diff_scope['ref']})"
             )
-        return f"# REBRIEF REPORT: {self._repo_path.name}"
+        name = self._repo_path.resolve().name or self._repo_path.name
+        return f"# REBRIEF REPORT: {name}"
 
     def _section_overview(self) -> str:
         risk_count = self.filtered_risk_count()
@@ -322,14 +337,14 @@ class ReportGenerator:
 
         if self._rules:
             lines.append(
-                f"- AI instruction files found: {len(self._rules)} "
+                f"- Project context files found: {len(self._rules)} "
                 f"({', '.join(sorted(self._rules))})."
             )
             for filename in sorted(self._rules):
                 entry = self._rules[filename]
                 lines.append(f"  - `{filename}`: {entry['lines_count']} lines")
         else:
-            lines.append("- AI instruction files found: none.")
+            lines.append("- Project context files found: none.")
 
         return "\n".join(lines)
 
@@ -418,10 +433,17 @@ class ReportGenerator:
         for secret in self._risks["secrets"]:
             if not self._is_filtered_risk(secret["confidence"]):
                 continue
-            items.append(
-                "Review and rotate hard-coded credentials in "
-                f"{secret['file']} (line {secret['line']})."
-            )
+            if is_test_or_fixture_path(secret["file"]):
+                items.append(
+                    "Confirm the secret-like value in "
+                    f"{secret['file']} (line {secret['line']}) "
+                    "is a test fixture, not a live credential."
+                )
+            else:
+                items.append(
+                    "Review and rotate hard-coded credentials in "
+                    f"{secret['file']} (line {secret['line']})."
+                )
 
         if self._risks["missing_tests"] and self._is_filtered_risk(Confidence.HIGH.value):
             items.append("Add a `tests/` directory and cover critical paths.")

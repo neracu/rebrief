@@ -26,7 +26,7 @@ def run_scan(
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     step = status or (lambda _message: nullcontext())
-    repo = str(repo_path)
+    repo = str(Path(repo_path).resolve())
     paths = diff_scope["files"] if diff_scope is not None else None
     diff_ref = diff_scope["ref"] if diff_scope is not None else None
 

@@ -14,7 +14,7 @@ SAMPLE_REPORT_WITH_RISKS = """\
 
 ## 1. Project Overview (Executive Summary)
 - This repository uses 1 language(s) and has 4 risk item(s) that need developer attention.
-- AI instruction files found: 2 (.cursorrules, CLAUDE.md).
+- Project context files found: 2 (.cursorrules, CLAUDE.md).
 
 ## 2. Technology Stack and Dependencies
 - **Languages:** Python

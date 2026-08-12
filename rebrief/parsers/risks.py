@@ -12,7 +12,20 @@ from rebrief.core.confidence import Confidence
 from rebrief.core.ignore import IgnoreMatcher
 
 TEST_DIRS: tuple[str, ...] = ("tests", "test", "__tests__")
+TEST_PATH_SEGMENTS: frozenset[str] = frozenset(
+    {"tests", "test", "__tests__", "spec", "fixtures"}
+)
 MARKER_RE = re.compile(r"\b(TODO|FIXME|HACK|BUG)\b")
+
+
+def is_test_or_fixture_path(relative_path: str) -> bool:
+    """True when any path segment is an exact test/fixture directory name."""
+    parts = [
+        part.lower()
+        for part in relative_path.replace("\\", "/").split("/")
+        if part
+    ]
+    return any(part in TEST_PATH_SEGMENTS for part in parts)
 
 # Secret detection requires BOTH signals:
 # 1. Variable/kwarg name semantically implies a credential (word-exact match).

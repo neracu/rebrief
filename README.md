@@ -66,7 +66,7 @@ rebrief scan .
 - **Deep Stack & Manifest Detection** - Recursive scan for ecosystem manifests across JavaScript/TypeScript, Python, Go, Rust, Java, Kotlin, PHP, and Ruby — including mono-repos and nested layouts. Parses dependencies, infers frameworks, and flags malformed manifests as warnings.
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
 - **Noise-Filtered Git Archaeology** - Filters low-value commits (wip, fix typo, minor updates) to surface a cleaner timeline of meaningful changes and 30-day change-density hotspots.
-- **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. No cloud upload, no API keys.
+- **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. Secret-like values under test/fixture paths are reported as WARNING (confirm they are fixtures) rather than CRITICAL credentials to rotate. No cloud upload, no API keys.
 - **Token savings analysis** - Estimates raw codebase tokens vs the generated brief (`cl100k_base` via optional `tiktoken`, or a `len(text) / 4` fallback) and reports the compression ratio in the CLI, `REBRIEF.md`, and JSON `summary.token_stats`.
 - **Markdown or JSON output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload (stack, timeline, risks, checklist) for scripts and tooling.
 
@@ -289,7 +289,7 @@ Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks ar
 
 ## 1. Project Overview (Executive Summary)
 - This repository uses 1 language(s) and has 4 risk item(s) that need developer attention.
-- AI instruction files found: 2 (.cursorrules, CLAUDE.md).
+- Project context files found: 2 (.cursorrules, CLAUDE.md).
   - `.cursorrules`: 12 lines
   - `CLAUDE.md`: 5 lines
 

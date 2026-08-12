@@ -314,7 +314,7 @@ def scan(
             raise SystemExit(1) from exc
         return
 
-    repo = Path(target)
+    repo = Path(target).resolve()
     if not repo.is_dir():
         ui.print(
             f"[red]Error:[/red] Path does not exist or is not a directory: {target}"

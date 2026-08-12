@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #09090b;
+  --color-card: #18181b;
+  --color-border: #27272a;
+  --color-fg: #fafafa;
+  --color-muted: #a1a1aa;
+  --color-accent: #10b981;
+  --color-accent-dim: #064e3b;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-size: 13px;
+}
+
+.markdown-body {
+  color: var(--color-fg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0.75rem 0 0.3rem;
+}
+
+.markdown-body h1 {
+  font-size: 14px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.3rem;
+}
+
+.markdown-body h2 {
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.25rem;
+}
+
+.markdown-body h3 {
+  font-size: 12px;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.3rem 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.1rem;
+}
+
+.markdown-body li {
+  margin: 0.15rem 0;
+}
+
+.markdown-body a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #09090b;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.markdown-body pre {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #09090b;
+  border: 1px solid var(--color-border);
+  border-radius: 0.3rem;
+  padding: 0.5rem 0.7rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-muted);
+  margin: 0.75rem 0;
+  padding: 0.15rem 0 0.15rem 0.85rem;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin: 0.75rem 0;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--color-border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: #09090b;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 1rem 0;
+}

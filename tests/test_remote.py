@@ -11,6 +11,7 @@ from rebrief.core.remote import (
     RemoteTarget,
     build_clone_command,
     clone_remote,
+    fetch_remote_head,
     parse_git_url,
     parse_github_shorthand,
     resolve_remote_target,
@@ -176,7 +177,7 @@ def test_clone_remote_missing_git(mock_run: MagicMock, tmp_path: Path) -> None:
 def test_temporary_clone_cleans_up_on_success() -> None:
     captured: dict[str, Path] = {}
 
-    def fake_clone(url: str, dest: Path) -> None:
+    def fake_clone(url: str, dest: Path, **kwargs: object) -> None:
         captured["dest"] = dest
         dest.joinpath("README.md").write_text("ok\n", encoding="utf-8")
 
@@ -196,7 +197,7 @@ def test_temporary_clone_cleans_up_on_success() -> None:
 def test_temporary_clone_cleans_up_on_failure() -> None:
     captured: dict[str, Path] = {}
 
-    def boom(url: str, dest: Path) -> None:
+    def boom(url: str, dest: Path, **kwargs: object) -> None:
         captured["dest"] = dest
         dest.joinpath("partial").write_text("x\n", encoding="utf-8")
         raise RemoteCloneError(CLONE_ERROR_MESSAGE)
@@ -211,3 +212,56 @@ def test_temporary_clone_cleans_up_on_failure() -> None:
                 raise AssertionError("clone should fail before yield")
     assert "dest" in captured
     assert not captured["dest"].exists()
+
+
+def test_build_clone_command_custom_depth() -> None:
+    command = build_clone_command("https://github.com/owner/repo", depth=50)
+    depth_index = command.index("--depth")
+    assert command[depth_index + 1] == "50"
+    assert str(CLONE_DEPTH) not in command
+
+
+def test_build_clone_command_unauthenticated_skips_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "secret-token")
+    command = build_clone_command(
+        "https://github.com/owner/repo",
+        authenticated=False,
+    )
+    assert all("extraHeader" not in part for part in command)
+
+
+@patch("rebrief.core.remote.subprocess.run")
+def test_clone_remote_custom_depth(mock_run: MagicMock, tmp_path: Path) -> None:
+    mock_run.return_value = MagicMock(returncode=0)
+    clone_remote("https://github.com/owner/repo", tmp_path, depth=50)
+    command = mock_run.call_args.args[0]
+    assert command[command.index("--depth") + 1] == "50"
+
+
+@patch("rebrief.core.remote.subprocess.run")
+def test_fetch_remote_head_parses_sha(mock_run: MagicMock) -> None:
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout="abc123def456\tHEAD\n",
+    )
+    sha = fetch_remote_head("https://github.com/owner/repo")
+    assert sha == "abc123def456"
+    command = mock_run.call_args.args[0]
+    assert command[:3] == ["git", "ls-remote", "https://github.com/owner/repo"]
+    assert all("extraHeader" not in part for part in command)
+
+
+@patch("rebrief.core.remote.subprocess.run")
+def test_fetch_remote_head_failure(mock_run: MagicMock) -> None:
+    mock_run.side_effect = subprocess.CalledProcessError(128, ["git"])
+    with pytest.raises(RemoteCloneError, match=CLONE_ERROR_MESSAGE):
+        fetch_remote_head("https://github.com/owner/repo")
+
+
+@patch("rebrief.core.remote.subprocess.run")
+def test_fetch_remote_head_empty_output(mock_run: MagicMock) -> None:
+    mock_run.return_value = MagicMock(returncode=0, stdout="\n")
+    with pytest.raises(RemoteCloneError, match=CLONE_ERROR_MESSAGE):
+        fetch_remote_head("https://github.com/owner/repo")

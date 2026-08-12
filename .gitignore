@@ -58,3 +58,8 @@ HANDOFF.md
 
 # Generated when scanning this repo locally
 .rebriefignore
+
+# Web UI
+web/node_modules/
+web/.next/
+web/out/

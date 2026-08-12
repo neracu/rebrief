@@ -20,6 +20,7 @@ A local CLI that scans any codebase and produces a structured `REBRIEF.md` repor
   - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
   - [Remote repositories](#remote-repositories)
   - [MCP server](#mcp-server)
+  - [Web UI](#web-ui)
 - [GitHub Actions](#github-actions)
   - [Set up in your repository](#set-up-in-your-repository)
   - [Use on a pull request](#use-on-a-pull-request)
@@ -115,6 +116,7 @@ rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .
 rebrief mcp                         # MCP stdio server (requires rebrief[mcp])
 rebrief mcp install                 # print IDE MCP config
+rebrief serve                       # web UI at http://127.0.0.1:8000 (requires rebrief[web])
 ```
 
 Scan the current directory (default), any local path, or a remote Git repository (HTTPS, SSH, or GitHub `owner/repo` shorthand). Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout. Local scans write the report inside the target repo; remote scans write it in the directory where you ran the command.
@@ -225,6 +227,27 @@ claude mcp add rebrief -- rebrief mcp
 ```
 
 `rebrief mcp install --write` merges that entry into Cursor (`.cursor/mcp.json`), Windsurf (`.windsurf/mcp.json`), Roo (`.roo/mcp.json`), and Claude Desktop (`claude_desktop_config.json`) without removing other servers.
+
+### Web UI
+
+Paste a public GitHub, GitLab, or Bitbucket URL and view `REBRIEF.md` in the browser. No Node, Docker, or extra processes.
+
+```bash
+pip install "rebrief[web,tokens]"
+rebrief serve
+```
+
+That starts the API and UI together at `http://127.0.0.1:8000/` and opens it in your default browser. Use `--no-open` to skip the browser, or `--port 8000` to change the port.
+
+`POST /api/scan` accepts `{ "url", "min_confidence", "diff_ref" }`, shallow-clones (`--depth 50`), and returns markdown, token stats, tech stack, and risk counts. Repeat requests for the same `repo_url:commit_sha` are served from cache. Rate limit: 10 scans per minute per IP.
+
+| Variable | Purpose |
+| -------- | ------- |
+| `FRONTEND_ORIGIN` | CORS allowlist for a separately hosted frontend. Default `http://localhost:3000`. Same-origin UI does not need this. |
+| `REDIS_URL` | Optional Redis for cache and rate limits. In-memory if unset. |
+| `SCAN_TIMEOUT_SECONDS` | Clone + scan wall clock. Default `120`. |
+
+Split deploy (optional): Docker image for the API; Vercel project root `web/` with `NEXT_PUBLIC_API_URL` pointing at the API origin.
 
 ---
 

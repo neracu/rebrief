@@ -23,9 +23,20 @@ Issues = "https://github.com/neracu/rebrief/issues"
 rebrief = "rebrief.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "colorama>=0.4", "mcp>=2.0,<3", "tiktoken>=0.7"]
+dev = [
+    "pytest>=8.0",
+    "colorama>=0.4",
+    "mcp>=2.0,<3",
+    "tiktoken>=0.7",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "slowapi>=0.1.9",
+    "redis>=5.0",
+    "httpx>=0.27",
+]
 mcp = ["mcp>=2.0,<3"]
 tokens = ["tiktoken>=0.7"]
+web = ["fastapi>=0.115", "uvicorn[standard]>=0.32", "slowapi>=0.1.9", "redis>=5.0"]
 publish = ["build>=1.0", "twine>=5.0"]
 
 [tool.setuptools.dynamic]
@@ -35,6 +46,9 @@ version = { attr = "rebrief.__version__" }
 where = ["."]
 include = ["rebrief*"]
 exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"rebrief.webapp" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

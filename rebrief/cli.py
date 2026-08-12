@@ -390,5 +390,39 @@ def server() -> None:
     _run_mcp_server()
 
 
+@main.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
+@click.option("--port", default=8000, type=int, show_default=True, help="Bind port.")
+@click.option(
+    "--open/--no-open",
+    "open_browser",
+    default=True,
+    help="Open the UI in a browser (default: open).",
+)
+def serve(host: str, port: int, open_browser: bool) -> None:
+    """Start the web UI in a browser (requires rebrief[web])."""
+    try:
+        import uvicorn
+
+        from rebrief.webapp.app import app, browser_url
+    except ImportError:
+        from rebrief.webapp import WEB_EXTRA_HINT
+
+        click.echo(WEB_EXTRA_HINT, err=True)
+        raise SystemExit(1)
+
+    url = browser_url(host, port)
+    click.echo(f"rebrief UI: {url}")
+    if open_browser:
+        import threading
+        import webbrowser
+
+        def _open() -> None:
+            webbrowser.open(url)
+
+        threading.Timer(0.8, _open).start()
+    uvicorn.run(app, host=host, port=port)
+
+
 if __name__ == "__main__":
     main()

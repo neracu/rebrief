@@ -43,6 +43,16 @@ def test_badge_help() -> None:
     assert "Shields.io" in result.output or "badge" in result.output.lower()
 
 
+def test_serve_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "--host" in result.output
+    assert "--port" in result.output
+    assert "--open" in result.output
+    assert "--no-open" in result.output
+
+
 def test_main_version() -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
@@ -465,7 +475,7 @@ def _seed_cloned_repo(dest: Path) -> None:
 def test_scan_remote_writes_to_cwd() -> None:
     cloned: dict[str, Path] = {}
 
-    def fake_clone(url: str, dest: Path) -> None:
+    def fake_clone(url: str, dest: Path, **kwargs: object) -> None:
         cloned["dest"] = dest
         _seed_cloned_repo(dest)
 
@@ -483,7 +493,7 @@ def test_scan_remote_writes_to_cwd() -> None:
 
 
 def test_scan_remote_clone_failure() -> None:
-    def boom(url: str, dest: Path) -> None:
+    def boom(url: str, dest: Path, **kwargs: object) -> None:
         raise RemoteCloneError(CLONE_ERROR_MESSAGE)
 
     runner = CliRunner()
@@ -495,7 +505,7 @@ def test_scan_remote_clone_failure() -> None:
 
 
 def test_scan_remote_ignores_inject_badge() -> None:
-    def fake_clone(url: str, dest: Path) -> None:
+    def fake_clone(url: str, dest: Path, **kwargs: object) -> None:
         _seed_cloned_repo(dest)
 
     runner = CliRunner()

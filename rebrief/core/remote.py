@@ -136,10 +136,15 @@ def _is_ssh_clone_url(url: str) -> bool:
     return url.startswith("git@") or url.startswith("ssh://")
 
 
-def build_clone_command(url: str) -> list[str]:
+def build_clone_command(
+    url: str,
+    *,
+    depth: int = CLONE_DEPTH,
+    authenticated: bool = True,
+) -> list[str]:
     """Build ``git clone`` argv (without the destination path)."""
     command = ["git"]
-    if not _is_ssh_clone_url(url):
+    if authenticated and not _is_ssh_clone_url(url):
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GIT_AUTH_TOKEN")
         if token:
             command.extend(
@@ -149,7 +154,7 @@ def build_clone_command(url: str) -> list[str]:
         [
             "clone",
             "--depth",
-            str(CLONE_DEPTH),
+            str(depth),
             "--single-branch",
             "--quiet",
             url,
@@ -158,13 +163,57 @@ def build_clone_command(url: str) -> list[str]:
     return command
 
 
-def clone_remote(url: str, dest: Path) -> None:
+def clone_remote(
+    url: str,
+    dest: Path,
+    *,
+    depth: int = CLONE_DEPTH,
+    authenticated: bool = True,
+    timeout: float | None = None,
+) -> None:
     """Shallow-clone ``url`` into ``dest`` or raise ``RemoteCloneError``."""
-    command = [*build_clone_command(url), str(dest)]
+    command = [
+        *build_clone_command(url, depth=depth, authenticated=authenticated),
+        str(dest),
+    ]
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
     except (FileNotFoundError, subprocess.CalledProcessError, OSError) as exc:
         raise RemoteCloneError(CLONE_ERROR_MESSAGE) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RemoteCloneError(CLONE_ERROR_MESSAGE) from exc
+
+
+def fetch_remote_head(url: str, *, timeout: float = 10.0) -> str:
+    """Return the remote HEAD SHA without attaching credentials."""
+    command = ["git", "ls-remote", url, "HEAD"]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        OSError,
+    ) as exc:
+        raise RemoteCloneError(CLONE_ERROR_MESSAGE) from exc
+
+    for line in result.stdout.splitlines():
+        sha = line.strip().split(None, 1)[0] if line.strip() else ""
+        if sha:
+            return sha
+    raise RemoteCloneError(CLONE_ERROR_MESSAGE)
 
 
 @contextmanager
@@ -172,6 +221,9 @@ def temporary_clone(
     target: RemoteTarget,
     *,
     status: Callable[[], AbstractContextManager[object]] | None = None,
+    depth: int = CLONE_DEPTH,
+    authenticated: bool = True,
+    timeout: float | None = None,
 ) -> Iterator[Path]:
     """Clone ``target`` into a temp directory and delete it on exit."""
     tmp = tempfile.TemporaryDirectory(prefix="rebrief-")
@@ -179,7 +231,13 @@ def temporary_clone(
     try:
         progress = status() if status is not None else nullcontext()
         with progress:
-            clone_remote(target.clone_url, dest)
+            clone_remote(
+                target.clone_url,
+                dest,
+                depth=depth,
+                authenticated=authenticated,
+                timeout=timeout,
+            )
         yield dest
     finally:
         try:

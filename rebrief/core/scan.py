@@ -30,13 +30,11 @@ def run_scan(
     paths = diff_scope["files"] if diff_scope is not None else None
     diff_ref = diff_scope["ref"] if diff_scope is not None else None
 
-    with step("Analyzing technology stack..."):
+    with step("[1/4] Parsing repository manifests & tech stack..."):
         stack = StackParser(repo, paths=paths).parse()
-
-    with step("Parsing AI rules..."):
         rules = RulesParser(repo).parse()
 
-    with step("Reading git history..."):
+    with step("[2/4] Analyzing git history & hotspots..."):
         if max_churn_files is None:
             git_log = GitLogParser(repo, diff_ref=diff_ref).parse()
         else:
@@ -44,21 +42,20 @@ def run_scan(
                 repo, diff_ref=diff_ref, max_churn_files=max_churn_files
             ).parse()
 
-    with step("Scanning for risks..."):
+    with step("[3/4] Running risk detectors & confidence checks..."):
         risks = RisksParser(
             repo, dependencies=stack["dependencies"], paths=paths
         ).parse()
 
-    with step("Counting tokens..."):
+    with step("[4/4] Calculating token metrics & generating report..."):
         raw_token_stats = count_repo_tokens(repo, paths=paths)
-
-    return ReportGenerator(
-        repo,
-        stack,
-        rules,
-        git_log,
-        risks,
-        min_confidence=min_confidence,
-        diff_scope=diff_scope,
-        raw_token_stats=raw_token_stats,
-    )
+        return ReportGenerator(
+            repo,
+            stack,
+            rules,
+            git_log,
+            risks,
+            min_confidence=min_confidence,
+            diff_scope=diff_scope,
+            raw_token_stats=raw_token_stats,
+        )

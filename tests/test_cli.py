@@ -29,6 +29,10 @@ def test_scan_help() -> None:
     assert "-c" in result.output
     assert "--inject-badge" in result.output
     assert "--diff" in result.output
+    assert "--plain" in result.output
+    assert "--no-color" in result.output
+    assert "--yes" in result.output
+    assert "-y" in result.output
 
 
 def test_badge_help() -> None:
@@ -87,11 +91,14 @@ def test_scan(tmp_path: Path) -> None:
     result = runner.invoke(main, ["scan", str(tmp_path)])
 
     assert result.exit_code == 0
-    assert "Scanning repository" in result.output
-    assert "Languages found" in result.output
-    assert "Risks identified" in result.output
-    assert "Scan complete" in result.output
-    assert "Token Efficiency" in result.output
+    assert "[1/4] Parsing repository manifests & tech stack..." in result.output
+    assert "[2/4] Analyzing git history & hotspots..." in result.output
+    assert "[3/4] Running risk detectors & confidence checks..." in result.output
+    assert "[4/4] Calculating token metrics & generating report..." in result.output
+    assert "Tech Stack" in result.output
+    assert "Languages" in result.output
+    assert "Token Savings" in result.output
+    assert "saved to" in result.output
     assert "token savings" in result.output
     assert (tmp_path / "REBRIEF.md").is_file()
 
@@ -182,6 +189,105 @@ def test_scan_stdout_markdown(tmp_path: Path) -> None:
     assert "Token Savings:" in result.output
 
 
+def test_scan_plain_omits_banner_and_ansi(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--plain"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "REBRIEF.md").is_file()
+    assert "\x1b[" not in result.output
+    assert "⚡" not in result.output
+    from rebrief.ui import BANNER_ART
+
+    assert BANNER_ART.split("\n")[0] not in result.output
+    assert "Token-Efficient Codebase Briefings for AI Agents" in result.output
+    assert "saved to" in result.output
+
+
+def test_scan_no_color_alias(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--no-color"])
+
+    assert result.exit_code == 0, result.output
+    assert "\x1b[" not in result.output
+    assert (tmp_path / "REBRIEF.md").is_file()
+
+
+def test_scan_settings_quit_does_not_write_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from rebrief.ui import ScanUI
+
+    monkeypatch.setattr(ScanUI, "should_prompt_settings", lambda self, **kwargs: True)
+    monkeypatch.setattr(ScanUI, "prompt_settings", lambda self, settings, **kwargs: None)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / "REBRIEF.md").exists()
+
+
+def test_scan_settings_start_can_switch_to_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from rebrief.ui import ScanSettings, ScanUI
+
+    def fake_prompt(self: ScanUI, settings: ScanSettings, **kwargs: object) -> ScanSettings:
+        settings.apply_format("json")
+        return settings
+
+    monkeypatch.setattr(ScanUI, "should_prompt_settings", lambda self, **kwargs: True)
+    monkeypatch.setattr(ScanUI, "prompt_settings", fake_prompt)
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "REBRIEF.json").is_file()
+    assert not (tmp_path / "REBRIEF.md").exists()
+
+
+def test_scan_stdout_json_ui_on_stderr(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "def test_ok() -> None:\n    pass\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-f", "json", "-o", "-"])
+
+    assert result.exit_code == 0, result.output
+    stdout = result.stdout if hasattr(result, "stdout") else result.output
+    start = stdout.find("{")
+    end = stdout.rfind("}")
+    assert start >= 0 and end > start
+    payload = json.loads(stdout[start : end + 1])
+    assert "tech_stack" in payload
+
+    ui_text = result.output
+    stderr = getattr(result, "stderr", None)
+    if stderr:
+        ui_text = stderr
+        assert "[1/4]" not in stdout[:start]
+    assert "[1/4]" in ui_text or "[1/4]" in result.output
+    assert "saved to" in ui_text or "saved to" in result.output
+
+
 def test_scan_min_confidence_filters_low_markers(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("# TODO review later\n", encoding="utf-8")
 
@@ -192,7 +298,8 @@ def test_scan_min_confidence_filters_low_markers(tmp_path: Path) -> None:
     report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
     assert "Missing tests directory" in report
     assert "TODO in app.py:1" not in report
-    assert "Risks identified    1" in result.output
+    assert "TODO in app.py:1" not in result.output
+    assert "WARNING" in result.output
 
 
 def test_scan_min_confidence_low_includes_markers(tmp_path: Path) -> None:
@@ -204,7 +311,8 @@ def test_scan_min_confidence_low_includes_markers(tmp_path: Path) -> None:
     assert result.exit_code == 0
     report = (tmp_path / "REBRIEF.md").read_text(encoding="utf-8")
     assert "TODO in app.py:1" in report
-    assert "Risks identified    2" in result.output
+    assert "TODO in app.py:1" in result.output
+    assert "NEEDS_VERIFICATION" in result.output
 
 
 def test_badge_prints_markdown_and_html(tmp_path: Path) -> None:

@@ -3,9 +3,6 @@ from pathlib import Path
 
 import click
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
 from rebrief import __version__
 from rebrief.core.badge import BADGE_LINK, inject_readme_badge
@@ -14,18 +11,12 @@ from rebrief.core.diff import DiffError, DiffScope, resolve_diff_scope
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
 from rebrief.core.remote import (
     RemoteCloneError,
-    RemoteTarget,
     resolve_remote_target,
     temporary_clone,
 )
 from rebrief.core.reporter import ReportGenerator
 from rebrief.core.scan import run_scan
-from rebrief.core.tokens import (
-    TokenStats,
-    format_brief_cli,
-    format_raw_cli,
-    format_savings_cli,
-)
+from rebrief.ui import ScanSettings, ScanUI, make_console
 
 
 def _configure_stdio() -> None:
@@ -39,33 +30,8 @@ def _configure_stdio() -> None:
             pass
 
 
-def _emoji_prefix(emoji: str, fallback: str = "> ") -> str:
-    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-    try:
-        emoji.encode(encoding)
-    except (UnicodeEncodeError, LookupError):
-        return fallback
-    return f"{emoji} "
-
-
-def _scan_prefix() -> str:
-    return _emoji_prefix("🔍")
-
-
-def _fetch_prefix() -> str:
-    return _emoji_prefix("⏳")
-
-
-def _token_prefix() -> str:
-    return _emoji_prefix("⚡")
-
-
-def _fetch_message(display_name: str) -> str:
-    return f"{_fetch_prefix()}Fetching remote repository [{display_name}]..."
-
-
 _configure_stdio()
-console = Console()
+console = make_console()
 
 
 def _default_output(format: str) -> str:
@@ -79,12 +45,13 @@ def _join_output(root: Path, resolved_output: str) -> Path:
     return root / output
 
 
-def _prepare_repo(repo_path: Path) -> bool:
+def _prepare_repo(repo_path: Path, ui_console: Console | None = None) -> bool:
     """Ensure .rebriefignore exists. Returns True if the file was created."""
+    out = ui_console or console
     try:
         return ensure_rebriefignore(repo_path)
     except OSError as exc:
-        console.print(f"[yellow]Warning:[/yellow] {exc}")
+        out.print(f"[yellow]Warning:[/yellow] {exc}")
         return False
 
 
@@ -92,21 +59,17 @@ def _build_generator(
     repo_path: str | Path,
     min_confidence: Confidence,
     *,
-    ui: Console | None = None,
+    scan_ui: ScanUI,
     diff_scope: DiffScope | None = None,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
-    status_ui = ui or console
-
-    def status(message: str) -> object:
-        return status_ui.status(f"[bold cyan]{message}[/bold cyan]", spinner="dots")
-
-    return run_scan(
-        repo_path,
-        min_confidence,
-        diff_scope=diff_scope,
-        status=status,
-    )
+    with scan_ui.scan_progress() as status:
+        return run_scan(
+            repo_path,
+            min_confidence,
+            diff_scope=diff_scope,
+            status=status,
+        )
 
 
 def _badge_html(badge_url: str) -> str:
@@ -154,34 +117,32 @@ def _run_scan_command(
     min_confidence: str,
     inject_badge: bool,
     diff_ref: str | None,
-    ui: Console,
+    scan_ui: ScanUI,
     output_root: Path,
     prepare_ignore: bool,
 ) -> None:
-    if prepare_ignore and _prepare_repo(repo):
-        ui.print(
-            f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
-        )
+    if prepare_ignore and _prepare_repo(repo, scan_ui.console):
+        scan_ui.print_dim(f"  Created {REBRIEFIGNORE_FILENAME} with default exclusions")
 
     diff_scope: DiffScope | None = None
     if diff_ref is not None:
         try:
             diff_scope = resolve_diff_scope(repo, diff_ref)
         except DiffError as exc:
-            ui.print(f"[red]Error:[/red] {exc}")
+            scan_ui.print_error(str(exc))
             raise SystemExit(1) from exc
 
-    ui.print(f"{_scan_prefix()}[bold cyan]Scanning repository...[/bold cyan]")
-    ui.print(f"  [dim]Path:[/dim]   {target_label}")
-    ui.print(f"  [dim]Format:[/dim] {format}")
-    ui.print(f"  [dim]Output:[/dim] {resolved_output}")
-    if diff_scope is not None:
-        ui.print(f"  [dim]Diff:[/dim]   {diff_scope['ref']}...HEAD")
+    scan_ui.print_scan_header(
+        path=target_label,
+        format=format,
+        output=resolved_output,
+        diff_ref=diff_scope["ref"] if diff_scope is not None else None,
+    )
 
     generator = _build_generator(
         repo,
         parse_min_confidence(min_confidence),
-        ui=ui,
+        scan_ui=scan_ui,
         diff_scope=diff_scope,
     )
 
@@ -199,40 +160,9 @@ def _run_scan_command(
     payload = generator.to_dict()
     if inject_badge:
         readme_path = inject_readme_badge(repo, payload["summary"]["badge_markdown"])
-        ui.print(f"  [dim]Badge injected into[/dim] {readme_path.resolve()}")
+        scan_ui.print_dim(f"  Badge injected into {readme_path.resolve()}")
 
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    if diff_scope is not None:
-        table.add_row(
-            "Mode",
-            f"incremental (diff against {diff_scope['ref']})",
-        )
-        table.add_row(
-            "Files scanned",
-            f"{diff_scope['files_scanned']} / {diff_scope['files_total']}",
-        )
-    table.add_row("Languages found", str(payload["summary"]["languages_count"]))
-    table.add_row("Risks identified", str(payload["summary"]["risks_count"]))
-    report_destination = (
-        "(stdout)" if output_path is None else str(output_path.resolve())
-    )
-    table.add_row("Report file", report_destination)
-    ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
-    _print_token_efficiency(ui, payload["summary"]["token_stats"])
-
-
-def _print_token_efficiency(ui: Console, stats: TokenStats) -> None:
-    raw = format_raw_cli(stats["raw_codebase_tokens"])
-    brief = format_brief_cli(stats["brief_tokens"])
-    reduction = format_savings_cli(stats["savings_percentage"])
-    ui.print(f"{_token_prefix()}[bold]Token Efficiency:[/bold]")
-    ui.print(f"   └─ Raw Codebase: {raw}")
-    ui.print(f"   └─ REBRIEF.md:    {brief}")
-    ui.print(f"   └─ Reduction:    {reduction}")
-
-
-def _clone_status(ui: Console, remote: RemoteTarget) -> object:
-    return ui.status(Text(_fetch_message(remote.display_name)), spinner="dots")
+    scan_ui.print_results(payload, output_path=output_path)
 
 
 @main.command()
@@ -274,6 +204,22 @@ def _clone_status(ui: Console, remote: RemoteTarget) -> object:
     default=None,
     help="Incremental scan against a git ref (default ref: HEAD~1).",
 )
+@click.option(
+    "--plain",
+    "--no-color",
+    "plain",
+    is_flag=True,
+    default=False,
+    help="Disable banners, colors, and unicode (script-friendly output).",
+)
+@click.option(
+    "--yes",
+    "-y",
+    "yes",
+    is_flag=True,
+    default=False,
+    help="Skip the settings panel and start scanning immediately.",
+)
 def scan(
     target: str,
     format: str,
@@ -281,21 +227,50 @@ def scan(
     min_confidence: str,
     inject_badge: bool,
     diff_ref: str | None,
+    plain: bool,
+    yes: bool,
 ) -> None:
-    resolved_output = output or _default_output(format)
-    write_to_stdout = resolved_output == "-"
-    ui = Console(file=sys.stderr) if write_to_stdout else console
+    settings = ScanSettings(
+        target=target,
+        format=format.lower(),
+        output=output or _default_output(format),
+        min_confidence=min_confidence.lower(),
+        diff_ref=diff_ref,
+        inject_badge=inject_badge,
+        output_custom=output is not None,
+    )
+    write_to_stdout = settings.output == "-"
+    ui_file = sys.stderr if write_to_stdout else sys.stdout
+    scan_ui = ScanUI.create(plain=plain, file=ui_file)
+    scan_ui.print_banner()
+
+    if scan_ui.should_prompt_settings(yes=yes):
+        prompted = scan_ui.prompt_settings(settings)
+        if prompted is None:
+            raise SystemExit(0)
+        settings = prompted
+        write_to_stdout = settings.output == "-"
+        ui_file = sys.stderr if write_to_stdout else sys.stdout
+        scan_ui = ScanUI.create(plain=plain, file=ui_file)
+
+    target = settings.target
+    format = settings.format
+    resolved_output = settings.output
+    min_confidence = settings.min_confidence
+    inject_badge = settings.inject_badge
+    diff_ref = settings.diff_ref
 
     remote = resolve_remote_target(target)
     if remote is not None:
         if inject_badge:
-            ui.print(
-                "[yellow]Warning:[/yellow] --inject-badge is ignored for remote "
-                "repositories."
+            scan_ui.print_warning(
+                "--inject-badge is ignored for remote repositories."
             )
-        ui.print(_fetch_message(remote.display_name), markup=False)
+        scan_ui.console.print(scan_ui.fetch_message(remote.display_name), markup=False)
         try:
-            with temporary_clone(remote, status=lambda: _clone_status(ui, remote)) as repo:
+            with temporary_clone(
+                remote, status=lambda: scan_ui.clone_status(remote.display_name)
+            ) as repo:
                 _run_scan_command(
                     repo=repo,
                     target_label=target,
@@ -305,20 +280,18 @@ def scan(
                     min_confidence=min_confidence,
                     inject_badge=False,
                     diff_ref=diff_ref,
-                    ui=ui,
+                    scan_ui=scan_ui,
                     output_root=Path.cwd(),
                     prepare_ignore=False,
                 )
         except RemoteCloneError as exc:
-            ui.print(f"[red]Error:[/red] {exc}")
+            scan_ui.print_error(str(exc))
             raise SystemExit(1) from exc
         return
 
     repo = Path(target).resolve()
     if not repo.is_dir():
-        ui.print(
-            f"[red]Error:[/red] Path does not exist or is not a directory: {target}"
-        )
+        scan_ui.print_error(f"Path does not exist or is not a directory: {target}")
         raise SystemExit(1)
 
     _run_scan_command(
@@ -330,7 +303,7 @@ def scan(
         min_confidence=min_confidence,
         inject_badge=inject_badge,
         diff_ref=diff_ref,
-        ui=ui,
+        scan_ui=scan_ui,
         output_root=repo,
         prepare_ignore=True,
     )
@@ -348,19 +321,17 @@ def scan(
 )
 def badge(repo_path: str, min_confidence: str) -> None:
     """Print Shields.io Markdown and HTML badge snippets to stdout."""
-    ui = Console(file=sys.stderr)
+    scan_ui = ScanUI.create(file=sys.stderr)
     repo = Path(repo_path)
 
-    if _prepare_repo(repo):
-        ui.print(
-            f"  [dim]Created {REBRIEFIGNORE_FILENAME} with default exclusions[/dim]"
-        )
+    if _prepare_repo(repo, scan_ui.console):
+        scan_ui.print_dim(f"  Created {REBRIEFIGNORE_FILENAME} with default exclusions")
 
-    ui.print(f"{_scan_prefix()}[bold cyan]Generating badge...[/bold cyan]")
+    scan_ui.print_dim("Generating badge...")
     generator = _build_generator(
         repo,
         parse_min_confidence(min_confidence),
-        ui=ui,
+        scan_ui=scan_ui,
     )
     summary = generator.to_dict()["summary"]
     sys.stdout.write(summary["badge_markdown"] + "\n")

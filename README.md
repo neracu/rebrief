@@ -99,7 +99,9 @@ pip install "rebrief[tokens]"   # optional: accurate cl100k_base token counts
 ```
 
 ```bash
-rebrief scan .
+rebrief scan .                      # TTY: settings panel, then start
+rebrief scan . -y                   # skip the panel and scan immediately
+rebrief scan . --plain              # no banner, color, or unicode
 rebrief scan /path/to/repo -o REBRIEF.md
 rebrief scan owner/repo             # GitHub shorthand → clone + scan
 rebrief scan https://github.com/owner/repo

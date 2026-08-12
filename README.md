@@ -1,37 +1,16 @@
-# rebrief
-
-[![PyPI version](https://img.shields.io/pypi/v/rebrief.svg)](https://pypi.org/project/rebrief/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <img src="assets/logo.png" alt="rebrief" height="52">
+</p>
+<p align="center">
+  <a href="https://pypi.org/project/rebrief/"><img src="https://img.shields.io/pypi/v/rebrief.svg" alt="PyPI version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
 **Instantly turn any unfamiliar repository into a clean developer handoff dossier.**
 
 A local CLI that scans any codebase and produces a structured `REBRIEF.md` report in ~30 seconds - stack, context, history, risks, and a where-to-start checklist.
 
-## Navigation
-
-- [Demo](#demo)
-- [The Pain](#the-pain)
-- [Before vs. After](#before-vs-after)
-- [Key Features](#key-features)
-  - [Stack detection](#stack-detection)
-- [Installation & Quick Start](#installation--quick-start)
-  - [Status badges](#status-badges)
-  - [JSON output](#json-output)
-  - [XML output](#xml-output)
-  - [HTML output](#html-output)
-  - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
-  - [Remote repositories](#remote-repositories)
-  - [MCP server](#mcp-server)
-  - [Web UI](#web-ui)
-  - [Chat mode](#chat-mode)
-- [GitHub Actions](#github-actions)
-  - [Set up in your repository](#set-up-in-your-repository)
-  - [Use on a pull request](#use-on-a-pull-request)
-- [Example Output](#example-output)
-- [AI Prompting](#ai-prompting)
-- [License](#license)
-
-## Demo
+<h1 id="demo">🎬 Demo</h1>
 
 ```bash
 rebrief scan .
@@ -43,11 +22,35 @@ Point it at any local repo or a remote Git URL. rebrief walks the stack, rules, 
 
 ---
 
-## The Pain
+<h1 id="navigation">🧭 Navigation</h1>
+
+- [🎬 Demo](#demo)
+- [😫 The Pain](#the-pain)
+- [⚖️ Before vs. After](#before-vs-after)
+- [✨ Key Features](#key-features)
+  - [Stack detection](#stack-detection)
+- [🚀 Installation & Quick Start](#installation--quick-start)
+  - [Status badges](#status-badges)
+  - [JSON output](#json-output)
+  - [XML output](#xml-output)
+  - [HTML output](#html-output)
+  - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
+  - [Remote repositories](#remote-repositories)
+  - [MCP server](#mcp-server)
+  - [Web UI](#web-ui)
+  - [Chat mode](#chat-mode)
+- [⚙️ GitHub Actions](#github-actions)
+  - [Set up in your repository](#set-up-in-your-repository)
+  - [Use on a pull request](#use-on-a-pull-request)
+- [📄 Example Output](#example-output)
+- [💡 AI Prompting](#ai-prompting)
+- [📜 License](#license)
+
+<h1 id="the-pain">😫 The Pain</h1>
 
 You join a new project - after an outsourcing handoff, a freelancer exit, or years of legacy development. Your first week disappears into onboarding archaeology: manually mapping the tech stack, hunting buried TODOs, sorting through a noisy Git history, and trying to spot security and test gaps before you can ship anything. The knowledge is in the repo; nobody assembled it.
 
-## Before vs. After
+<h1 id="before-vs-after">⚖️ Before vs. After</h1>
 
 
 | Before                                        | After                                         |
@@ -65,7 +68,7 @@ rebrief scan .
 
 ---
 
-## Key Features
+<h1 id="key-features">✨ Key Features</h1>
 
 - **Deep Stack & Manifest Detection** - Recursive scan for ecosystem manifests across JavaScript/TypeScript, Python, Go, Rust, Java, Kotlin, PHP, and Ruby — including mono-repos and nested layouts. Parses dependencies, infers frameworks, and flags malformed manifests as warnings.
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
@@ -95,7 +98,7 @@ If a manifest cannot be parsed, the scan continues and the report lists a **WARN
 
 ---
 
-## Installation & Quick Start
+<h1 id="installation--quick-start">🚀 Installation & Quick Start</h1>
 
 ```bash
 pip install rebrief
@@ -327,7 +330,7 @@ REPL slash commands: `/clear` (reset memory), `/copy` (clipboard last reply), `/
 
 ---
 
-## GitHub Actions
+<h1 id="github-actions">⚙️ GitHub Actions</h1>
 
 Run `rebrief scan` on pull requests and post a summarized risk report as a PR comment.
 
@@ -383,7 +386,7 @@ Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks ar
 
 ---
 
-## Example Output
+<h1 id="example-output">📄 Example Output</h1>
 
 ```markdown
 # REBRIEF REPORT: my-app
@@ -431,7 +434,7 @@ Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks ar
 
 ---
 
-## AI Prompting
+<h1 id="ai-prompting">💡 AI Prompting</h1>
 
 After generating `REBRIEF.md`, point your AI assistant at it before diving into the codebase. In Cursor or Claude, use this prompt:
 
@@ -447,6 +450,6 @@ This gives the model a structured overview of the stack, risks, and where to sta
 
 ---
 
-## License
+<h1 id="license">📜 License</h1>
 
 MIT

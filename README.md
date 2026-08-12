@@ -67,6 +67,7 @@ rebrief scan .
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
 - **Noise-Filtered Git Archaeology** - Filters low-value commits (wip, fix typo, minor updates) to surface a cleaner timeline of meaningful changes and 30-day change-density hotspots.
 - **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. No cloud upload, no API keys.
+- **Token savings analysis** - Estimates raw codebase tokens vs the generated brief (`cl100k_base` via optional `tiktoken`, or a `len(text) / 4` fallback) and reports the compression ratio in the CLI, `REBRIEF.md`, and JSON `summary.token_stats`.
 - **Markdown or JSON output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload (stack, timeline, risks, checklist) for scripts and tooling.
 
 ### Stack detection
@@ -94,6 +95,7 @@ If a manifest cannot be parsed, the scan continues and the report lists a **WARN
 
 ```bash
 pip install rebrief
+pip install "rebrief[tokens]"   # optional: accurate cl100k_base token counts
 ```
 
 ```bash
@@ -143,7 +145,7 @@ If the markers are present, the content between them is replaced. If they are mi
 
 ### JSON output
 
-For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, and file-count fields (`files_scanned`, `files_total`) for full and incremental scans.
+For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, file-count fields (`files_scanned`, `files_total`), and `token_stats` (`raw_codebase_tokens`, `brief_tokens`, `savings_percentage`, `tokenizer`) for full and incremental scans.
 
 ```bash
 rebrief scan . -f json
@@ -322,6 +324,8 @@ Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks ar
 3. Resolve version conflict for `django`: ==3.2, ==4.2.
 4. Set up the development environment for Django.
 5. Review frequently changed file: src/app.py (8 edits in 30 days).
+
+> 💡 **Token Savings:** `REBRIEF.md` uses **850 tokens** instead of **45.2k raw tokens** (**98.1% reduction**).
 ```
 
 ---

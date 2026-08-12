@@ -242,6 +242,7 @@ def test_to_dict_structure(tmp_path: Path) -> None:
         "badge_markdown",
         "files_scanned",
         "files_total",
+        "token_stats",
     }
     assert set(payload["tech_stack"].keys()) == {
         "languages",

@@ -91,6 +91,8 @@ def test_scan(tmp_path: Path) -> None:
     assert "Languages found" in result.output
     assert "Risks identified" in result.output
     assert "Scan complete" in result.output
+    assert "Token Efficiency" in result.output
+    assert "token savings" in result.output
     assert (tmp_path / "REBRIEF.md").is_file()
 
 
@@ -156,6 +158,15 @@ def test_scan_stdout_json(tmp_path: Path) -> None:
     payload = json.loads(result.output[json_start:])
     assert "version" in payload
     assert "tech_stack" in payload
+    token_stats = payload["summary"]["token_stats"]
+    assert set(token_stats) == {
+        "raw_codebase_tokens",
+        "brief_tokens",
+        "savings_percentage",
+        "tokenizer",
+    }
+    assert token_stats["raw_codebase_tokens"] >= 0
+    assert token_stats["brief_tokens"] > 0
 
 
 def test_scan_stdout_markdown(tmp_path: Path) -> None:
@@ -168,6 +179,7 @@ def test_scan_stdout_markdown(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert not (tmp_path / "REBRIEF.md").is_file()
     assert "# REBRIEF REPORT:" in result.output
+    assert "Token Savings:" in result.output
 
 
 def test_scan_min_confidence_filters_low_markers(tmp_path: Path) -> None:

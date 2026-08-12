@@ -6,7 +6,7 @@ Thank you for considering a contribution. **rebrief** is a local CLI that scans 
 
 - **Local-first** - everything runs on your machine. No cloud uploads, no API keys. Remote `scan` targets are shallow-cloned (`--depth 100`) into a temporary directory and deleted after the report is written.
 - **Lightning-fast** - static file walks, regex scans, and a single `git` subprocess (plus one `git clone` when the target is a remote URL).
-- **Minimal dependencies** - runtime requires only `click` and `rich`. MCP server mode is an optional extra (`pip install "rebrief[mcp]"`).
+- **Minimal dependencies** - runtime requires only `click` and `rich`. MCP server mode is an optional extra (`pip install "rebrief[mcp]"`). Accurate token counts use optional `tiktoken` (`pip install "rebrief[tokens]"`); without it, rebrief falls back to `len(text) / 4`.
 
 ## How to Help
 

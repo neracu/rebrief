@@ -7,6 +7,7 @@ from pathlib import Path
 from rebrief.core.confidence import Confidence
 from rebrief.core.diff import DiffScope
 from rebrief.core.reporter import ReportGenerator
+from rebrief.core.tokens import count_repo_tokens
 from rebrief.parsers.git_log import GitLogParser
 from rebrief.parsers.risks import RisksParser
 from rebrief.parsers.rules import RulesParser
@@ -48,6 +49,9 @@ def run_scan(
             repo, dependencies=stack["dependencies"], paths=paths
         ).parse()
 
+    with step("Counting tokens..."):
+        raw_token_stats = count_repo_tokens(repo, paths=paths)
+
     return ReportGenerator(
         repo,
         stack,
@@ -56,4 +60,5 @@ def run_scan(
         risks,
         min_confidence=min_confidence,
         diff_scope=diff_scope,
+        raw_token_stats=raw_token_stats,
     )

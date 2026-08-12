@@ -23,8 +23,9 @@ Issues = "https://github.com/neracu/rebrief/issues"
 rebrief = "rebrief.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "colorama>=0.4", "mcp>=2.0,<3"]
+dev = ["pytest>=8.0", "colorama>=0.4", "mcp>=2.0,<3", "tiktoken>=0.7"]
 mcp = ["mcp>=2.0,<3"]
+tokens = ["tiktoken>=0.7"]
 publish = ["build>=1.0", "twine>=5.0"]
 
 [tool.setuptools.dynamic]

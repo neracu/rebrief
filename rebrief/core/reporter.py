@@ -8,6 +8,13 @@ from rebrief import __version__
 from rebrief.core.badge import build_badge
 from rebrief.core.confidence import Confidence, meets_threshold
 from rebrief.core.diff import DiffScope, count_tracked_files
+from rebrief.core.tokens import (
+    TokenStats,
+    complete_token_stats,
+    count_tokens,
+    empty_token_stats,
+    format_savings_footnote,
+)
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
@@ -37,6 +44,7 @@ class ReportSummary(TypedDict):
     badge_markdown: str
     files_scanned: int
     files_total: int
+    token_stats: TokenStats
 
 
 class ReportTechStack(TypedDict):
@@ -89,6 +97,7 @@ class ReportGenerator:
         risks: RiskReport,
         min_confidence: Confidence = Confidence.MEDIUM,
         diff_scope: DiffScope | None = None,
+        raw_token_stats: TokenStats | None = None,
     ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
@@ -97,8 +106,15 @@ class ReportGenerator:
         self._risks = risks
         self._min_confidence = min_confidence
         self._diff_scope = diff_scope
+        self._raw_token_stats = raw_token_stats or empty_token_stats()
+        self._token_stats: TokenStats | None = None
 
     def generate(self) -> str:
+        body = self._body()
+        stats = self.token_stats()
+        return body + "\n" + format_savings_footnote(stats) + "\n"
+
+    def _body(self) -> str:
         sections = [
             self._title(),
             self._section_overview(),
@@ -108,6 +124,17 @@ class ReportGenerator:
             self._section_checklist(),
         ]
         return "\n\n".join(sections) + "\n"
+
+    def token_stats(self) -> TokenStats:
+        if self._token_stats is None:
+            brief_tokens = count_tokens(self._body())
+            raw = self._raw_token_stats
+            self._token_stats = complete_token_stats(
+                raw["raw_codebase_tokens"],
+                brief_tokens,
+                raw["tokenizer"],
+            )
+        return self._token_stats
 
     def generate_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n"
@@ -147,6 +174,7 @@ class ReportGenerator:
                 "badge_markdown": badge["badge_markdown"],
                 "files_scanned": files_scanned,
                 "files_total": files_total,
+                "token_stats": self.token_stats(),
             },
             "tech_stack": {
                 "languages": list(self._stack["languages"]),

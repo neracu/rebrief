@@ -20,6 +20,12 @@ from rebrief.core.remote import (
 )
 from rebrief.core.reporter import ReportGenerator
 from rebrief.core.scan import run_scan
+from rebrief.core.tokens import (
+    TokenStats,
+    format_brief_cli,
+    format_raw_cli,
+    format_savings_cli,
+)
 
 
 def _configure_stdio() -> None:
@@ -48,6 +54,10 @@ def _scan_prefix() -> str:
 
 def _fetch_prefix() -> str:
     return _emoji_prefix("⏳")
+
+
+def _token_prefix() -> str:
+    return _emoji_prefix("⚡")
 
 
 def _fetch_message(display_name: str) -> str:
@@ -208,6 +218,17 @@ def _run_scan_command(
     )
     table.add_row("Report file", report_destination)
     ui.print(Panel(table, title="[bold green]Scan complete[/bold green]", border_style="green"))
+    _print_token_efficiency(ui, payload["summary"]["token_stats"])
+
+
+def _print_token_efficiency(ui: Console, stats: TokenStats) -> None:
+    raw = format_raw_cli(stats["raw_codebase_tokens"])
+    brief = format_brief_cli(stats["brief_tokens"])
+    reduction = format_savings_cli(stats["savings_percentage"])
+    ui.print(f"{_token_prefix()}[bold]Token Efficiency:[/bold]")
+    ui.print(f"   └─ Raw Codebase: {raw}")
+    ui.print(f"   └─ REBRIEF.md:    {brief}")
+    ui.print(f"   └─ Reduction:    {reduction}")
 
 
 def _clone_status(ui: Console, remote: RemoteTarget) -> object:

@@ -207,6 +207,55 @@ def test_scan_stdout_xml(tmp_path: Path) -> None:
     assert "<tech_stack>" in xml_text
 
 
+def test_scan_format_html_default_output(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--format", "html"])
+
+    assert result.exit_code == 0
+    html_path = tmp_path / "REBRIEF.html"
+    assert html_path.is_file()
+    assert not (tmp_path / "REBRIEF.md").is_file()
+    html = html_path.read_text(encoding="utf-8")
+    assert html.startswith("<!DOCTYPE html>")
+    assert "<style>" in html
+    assert "<script>" in html
+    assert html.strip()
+
+
+def test_scan_format_html_custom_output(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["scan", str(tmp_path), "-f", "html", "-o", "report.html"],
+    )
+
+    assert result.exit_code == 0
+    assert (tmp_path / "report.html").is_file()
+
+
+def test_scan_stdout_html(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-f", "html", "-o", "-"])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / "REBRIEF.html").is_file()
+    html_start = result.output.find("<!DOCTYPE html>")
+    assert html_start >= 0
+    html = result.output[html_start:]
+    assert "<style>" in html
+    assert "<script>" in html
+    assert "Token efficiency" in html
+
+
 def test_scan_stdout_json(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")

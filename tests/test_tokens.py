@@ -77,6 +77,7 @@ def test_count_repo_tokens_sums_text_and_skips_binary(tmp_path: Path) -> None:
     (tmp_path / "blob.bin").write_bytes(b"text\x00more")
     (tmp_path / "REBRIEF.md").write_text("# old report\n" * 50, encoding="utf-8")
     (tmp_path / "REBRIEF.xml").write_text("<rebrief/>\n" * 50, encoding="utf-8")
+    (tmp_path / "REBRIEF.html").write_text("<html>old dashboard</html>\n" * 50, encoding="utf-8")
     vendor = tmp_path / "node_modules" / "pkg"
     vendor.mkdir(parents=True)
     (vendor / "index.js").write_text("module.exports = 1;\n", encoding="utf-8")

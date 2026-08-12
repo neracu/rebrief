@@ -207,6 +207,14 @@ class ReportGenerator:
     def write_xml_report(self, output_path: str | Path = "REBRIEF.xml") -> None:
         Path(output_path).write_text(self.generate_xml(), encoding="utf-8")
 
+    def generate_html(self) -> str:
+        from rebrief.formatters.html import render_html
+
+        return render_html(self.to_dict(), self.generate(), self._repo_path.name)
+
+    def write_html_report(self, output_path: str | Path = "REBRIEF.html") -> None:
+        Path(output_path).write_text(self.generate_html(), encoding="utf-8")
+
     def filtered_risk_count(self) -> int:
         return len(self._filtered_risk_items())
 

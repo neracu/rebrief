@@ -39,6 +39,8 @@ def _default_output(format: str) -> str:
         return "REBRIEF.json"
     if format == "xml":
         return "REBRIEF.xml"
+    if format == "html":
+        return "REBRIEF.html"
     return "REBRIEF.md"
 
 
@@ -156,6 +158,8 @@ def _run_scan_command(
             content = generator.generate_json()
         elif format == "xml":
             content = generator.generate_xml()
+        elif format == "html":
+            content = generator.generate_html()
         else:
             content = generator.generate()
         sys.stdout.write(content)
@@ -165,6 +169,8 @@ def _run_scan_command(
             generator.write_json_report(output_path)
         elif format == "xml":
             generator.write_xml_report(output_path)
+        elif format == "html":
+            generator.write_html_report(output_path)
         else:
             generator.write_report(output_path)
 
@@ -181,7 +187,7 @@ def _run_scan_command(
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["markdown", "json", "xml"], case_sensitive=False),
+    type=click.Choice(["markdown", "json", "xml", "html"], case_sensitive=False),
     default="markdown",
     show_default=True,
     help="Output format.",
@@ -190,7 +196,7 @@ def _run_scan_command(
     "--output",
     "-o",
     default=None,
-    help="Output path (default: REBRIEF.md, REBRIEF.json, or REBRIEF.xml). Use '-' for stdout.",
+    help="Output path (default: REBRIEF.md, REBRIEF.json, REBRIEF.xml, or REBRIEF.html). Use '-' for stdout.",
 )
 @click.option(
     "--min-confidence",

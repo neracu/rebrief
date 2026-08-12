@@ -62,6 +62,8 @@ def default_output_name(format: str) -> str:
         return "REBRIEF.json"
     if format == "xml":
         return "REBRIEF.xml"
+    if format == "html":
+        return "REBRIEF.html"
     return "REBRIEF.md"
 
 
@@ -338,9 +340,9 @@ class ScanUI:
                 selected = ask(
                     "Format",
                     default=settings.format,
-                    choices=["markdown", "json", "xml"],
+                    choices=["markdown", "json", "xml", "html"],
                 ).strip().lower()
-                if selected in {"markdown", "json", "xml"}:
+                if selected in {"markdown", "json", "xml", "html"}:
                     settings.apply_format(selected)
             elif choice == "3":
                 selected = ask("Output path", default=settings.output).strip()

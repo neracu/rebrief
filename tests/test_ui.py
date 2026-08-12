@@ -186,6 +186,15 @@ def test_prompt_settings_format_xml_updates_default_output() -> None:
     assert result.output == "REBRIEF.xml"
 
 
+def test_prompt_settings_format_html_updates_default_output() -> None:
+    ui = _fancy_ui()
+    answers = iter(["2", "html", "s"])
+    result = ui.prompt_settings(_settings(), input_func=lambda _: next(answers))
+    assert result is not None
+    assert result.format == "html"
+    assert result.output == "REBRIEF.html"
+
+
 def test_settings_region_replace_uses_cursor_restore() -> None:
     from io import StringIO
 

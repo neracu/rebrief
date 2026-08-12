@@ -161,6 +161,52 @@ def test_scan_format_json_custom_output(tmp_path: Path) -> None:
     assert (tmp_path / "report.json").is_file()
 
 
+def test_scan_format_xml_default_output(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "--format", "xml"])
+
+    assert result.exit_code == 0
+    assert (tmp_path / "REBRIEF.xml").is_file()
+    assert not (tmp_path / "REBRIEF.md").is_file()
+    xml_text = (tmp_path / "REBRIEF.xml").read_text(encoding="utf-8")
+    assert xml_text.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    assert "<rebrief " in xml_text
+
+
+def test_scan_format_xml_custom_output(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["scan", str(tmp_path), "-f", "xml", "-o", "report.xml"],
+    )
+
+    assert result.exit_code == 0
+    assert (tmp_path / "report.xml").is_file()
+
+
+def test_scan_stdout_xml(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["scan", str(tmp_path), "-f", "xml", "-o", "-"])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / "REBRIEF.xml").is_file()
+    xml_start = result.output.find("<?xml")
+    assert xml_start >= 0
+    xml_text = result.output[xml_start:]
+    assert "<rebrief " in xml_text
+    assert "<summary>" in xml_text
+    assert "<tech_stack>" in xml_text
+
+
 def test_scan_stdout_json(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_app.py").write_text("def test_ok() -> None:\n    pass\n", encoding="utf-8")

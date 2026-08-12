@@ -17,6 +17,7 @@ A local CLI that scans any codebase and produces a structured `REBRIEF.md` repor
 - [Installation & Quick Start](#installation--quick-start)
   - [Status badges](#status-badges)
   - [JSON output](#json-output)
+  - [XML output](#xml-output)
   - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
   - [Remote repositories](#remote-repositories)
   - [MCP server](#mcp-server)
@@ -68,8 +69,8 @@ rebrief scan .
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
 - **Noise-Filtered Git Archaeology** - Filters low-value commits (wip, fix typo, minor updates) to surface a cleaner timeline of meaningful changes and 30-day change-density hotspots.
 - **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. Secret-like values under test/fixture paths are reported as WARNING (confirm they are fixtures) rather than CRITICAL credentials to rotate. No cloud upload, no API keys.
-- **Token savings analysis** - Estimates raw codebase tokens vs the generated brief (`cl100k_base` via optional `tiktoken`, or a `len(text) / 4` fallback) and reports the compression ratio in the CLI, `REBRIEF.md`, and JSON `summary.token_stats`.
-- **Markdown or JSON output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload (stack, timeline, risks, checklist) for scripts and tooling.
+- **Token savings analysis** - Estimates raw codebase tokens vs the generated brief (`cl100k_base` via optional `tiktoken`, or a `len(text) / 4` fallback) and reports the compression ratio in the CLI, `REBRIEF.md`, JSON `summary.token_stats`, and XML `summary`.
+- **Markdown, JSON, or XML output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload, or `-f xml` for a compact `REBRIEF.xml` brief optimized for Claude and other LLM context windows.
 
 ### Stack detection
 
@@ -109,6 +110,8 @@ rebrief scan https://github.com/owner/repo
 rebrief scan git@github.com:owner/repo.git
 rebrief scan . -f json              # → REBRIEF.json
 rebrief scan . -f json -o -         # JSON to stdout (status on stderr)
+rebrief scan . -f xml               # → REBRIEF.xml
+rebrief scan . -f xml -o -          # XML to stdout (status on stderr)
 rebrief scan . --diff               # incremental vs HEAD~1
 rebrief scan . --diff origin/main   # incremental vs PR/base ref
 rebrief badge .                     # Shields.io Markdown + HTML to stdout
@@ -119,7 +122,7 @@ rebrief mcp install                 # print IDE MCP config
 rebrief serve                       # web UI at http://127.0.0.1:8000 (requires rebrief[web])
 ```
 
-Scan the current directory (default), any local path, or a remote Git repository (HTTPS, SSH, or GitHub `owner/repo` shorthand). Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`. Use `-o` to set a custom path, or `-o -` to write the report to stdout. Local scans write the report inside the target repo; remote scans write it in the directory where you ran the command.
+Scan the current directory (default), any local path, or a remote Git repository (HTTPS, SSH, or GitHub `owner/repo` shorthand). Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`; XML defaults to `REBRIEF.xml`. Use `-o` to set a custom path, or `-o -` to write the report to stdout. Local scans write the report inside the target repo; remote scans write it in the directory where you ran the command.
 
 Use `--diff [REF]` for an incremental scan of only files changed since a git ref (default `HEAD~1`). Stack, risk, and hotspot analysis run against that file list; structural checks such as a `tests/` directory remain repo-wide. Incremental Markdown reports are titled `REBRIEF INCREMENTAL REPORT`, and JSON includes `"mode": "incremental"`, `"diff_ref"`, plus `summary.files_scanned` / `summary.files_total`.
 
@@ -158,6 +161,39 @@ rebrief scan . -f json -o - > REBRIEF.json
 ```
 
 The `version` field matches the installed rebrief package version. GitHub Actions and `rebrief.ci.comment` still expect Markdown (`REBRIEF.md`); use JSON locally or in custom pipelines.
+
+### XML output
+
+For Claude and other LLM context windows, pass `-f xml` (or `--format xml`). The report is a compact, indented XML projection of the same analysis: `summary`, `tech_stack`, `hotspots`, `risk_map`, and `checklist`. Risks are a flat list with `severity` and `confidence` attributes. Token savings live under `summary` as `raw_tokens`, `brief_tokens`, and `savings_percentage`. The root `version` attribute matches the installed package version.
+
+XML omits verbose JSON-only fields (commit timeline, dependency lists, badges, tokenizer metadata) so the file stays small enough to paste into a prompt.
+
+```bash
+rebrief scan . -f xml
+rebrief scan . -f xml -o report.xml
+rebrief scan . -f xml -o - > REBRIEF.xml
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<rebrief version="0.3.0">
+  <summary>
+    <languages_count>2</languages_count>
+    <risks_count>2</risks_count>
+    <raw_tokens>45200</raw_tokens>
+    <brief_tokens>850</brief_tokens>
+    <savings_percentage>98.12</savings_percentage>
+  </summary>
+  <tech_stack>
+    <languages>
+      <language>JavaScript/TypeScript</language>
+      <language>Python</language>
+    </languages>
+    ...
+  </tech_stack>
+  ...
+</rebrief>
+```
 
 ### Excluding paths with `.rebriefignore`
 

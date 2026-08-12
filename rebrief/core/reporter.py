@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Literal, TypedDict
+from xml.etree import ElementTree as ET
 
 from rebrief import __version__
 from rebrief.core.badge import build_badge
@@ -87,6 +88,19 @@ class _CollectedRiskItem(TypedDict):
     confidence: str
 
 
+def _xml_text(parent: ET.Element, tag: str, value: object) -> ET.Element:
+    child = ET.SubElement(parent, tag)
+    child.text = str(value)
+    return child
+
+
+def _xml_list(parent: ET.Element, wrapper: str, item_tag: str, values: list[str]) -> ET.Element:
+    container = ET.SubElement(parent, wrapper)
+    for value in values:
+        _xml_text(container, item_tag, value)
+    return container
+
+
 class ReportGenerator:
     def __init__(
         self,
@@ -139,11 +153,59 @@ class ReportGenerator:
     def generate_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n"
 
+    def generate_xml(self) -> str:
+        payload = self.to_dict()
+        root = ET.Element("rebrief", version=payload["version"])
+
+        summary = ET.SubElement(root, "summary")
+        stats = payload["summary"]["token_stats"]
+        _xml_text(summary, "languages_count", payload["summary"]["languages_count"])
+        _xml_text(summary, "risks_count", payload["summary"]["risks_count"])
+        _xml_text(summary, "raw_tokens", stats["raw_codebase_tokens"])
+        _xml_text(summary, "brief_tokens", stats["brief_tokens"])
+        _xml_text(summary, "savings_percentage", f"{stats['savings_percentage']:.2f}")
+
+        tech_stack = ET.SubElement(root, "tech_stack")
+        _xml_list(tech_stack, "languages", "language", payload["tech_stack"]["languages"])
+        _xml_list(tech_stack, "frameworks", "framework", payload["tech_stack"]["frameworks"])
+        _xml_list(tech_stack, "manifests", "manifest", payload["tech_stack"]["manifests"])
+
+        hotspots = ET.SubElement(root, "hotspots")
+        for entry in payload["timeline"]["hotspots"]:
+            ET.SubElement(
+                hotspots,
+                "hotspot",
+                file=entry["file"],
+                changes=str(entry["changes"]),
+            )
+
+        risk_map = ET.SubElement(root, "risk_map")
+        for severity in ("critical", "warning", "info"):
+            for item in payload["risk_map"][severity]:
+                risk = ET.SubElement(
+                    risk_map,
+                    "risk",
+                    severity=severity.upper(),
+                    confidence=item["confidence"],
+                )
+                risk.text = item["message"]
+
+        checklist = ET.SubElement(root, "checklist")
+        for entry in payload["checklist"]:
+            _xml_text(checklist, "item", entry)
+
+        ET.indent(root, space="  ")
+        body = ET.tostring(root, encoding="unicode")
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + body + "\n"
+
     def write_report(self, output_path: str | Path = "REBRIEF.md") -> None:
         Path(output_path).write_text(self.generate(), encoding="utf-8")
 
     def write_json_report(self, output_path: str | Path = "REBRIEF.json") -> None:
         Path(output_path).write_text(self.generate_json(), encoding="utf-8")
+
+    def write_xml_report(self, output_path: str | Path = "REBRIEF.xml") -> None:
+        Path(output_path).write_text(self.generate_xml(), encoding="utf-8")
 
     def filtered_risk_count(self) -> int:
         return len(self._filtered_risk_items())

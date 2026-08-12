@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from xml.etree import ElementTree as ET
 
 from rebrief import __version__
 from rebrief.core.confidence import Confidence
@@ -426,6 +427,128 @@ def test_write_json_report_creates_file(tmp_path: Path) -> None:
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["version"] == __version__
     assert payload["tech_stack"]["frameworks"] == ["Django"]
+
+
+def test_generate_xml_structure(tmp_path: Path) -> None:
+    xml_text = _make_generator(tmp_path).generate_xml()
+
+    assert xml_text.startswith('<?xml version="1.0" encoding="UTF-8"?>\n')
+    assert xml_text.endswith("\n")
+    root = ET.fromstring(xml_text)
+    assert root.tag == "rebrief"
+    assert root.attrib["version"] == __version__
+    assert [child.tag for child in root] == [
+        "summary",
+        "tech_stack",
+        "hotspots",
+        "risk_map",
+        "checklist",
+    ]
+
+    summary = {child.tag: child.text for child in root.find("summary")}
+    assert summary["languages_count"] == "1"
+    assert summary["risks_count"] == "3"
+    assert summary["raw_tokens"] is not None
+    assert int(summary["brief_tokens"]) > 0
+    assert "." in summary["savings_percentage"]
+
+    languages = [el.text for el in root.find("tech_stack/languages")]
+    frameworks = [el.text for el in root.find("tech_stack/frameworks")]
+    manifests = [el.text for el in root.find("tech_stack/manifests")]
+    assert languages == ["Python"]
+    assert frameworks == ["Django"]
+    assert manifests == ["pyproject.toml"]
+    assert root.find("tech_stack/dependencies") is None
+
+    hotspot = root.find("hotspots/hotspot")
+    assert hotspot is not None
+    assert hotspot.attrib == {"file": "src/app.py", "changes": "8"}
+
+    risks = list(root.find("risk_map"))
+    assert [risk.attrib["severity"] for risk in risks] == ["CRITICAL", "WARNING", "WARNING"]
+    assert risks[0].attrib["confidence"] == "MEDIUM"
+    assert risks[0].text == "Hard-coded secret in config.py:3"
+    assert risks[1].text.startswith("Missing tests directory")
+
+    items = [el.text for el in root.find("checklist")]
+    assert "Review and rotate hard-coded credentials in config.py (line 3)." in items
+
+
+def test_generate_xml_empty_containers(tmp_path: Path) -> None:
+    stack: StackResult = {
+        "languages": ["Python"],
+        "manifests": ["pyproject.toml"],
+        "frameworks": [],
+        "dependencies": [],
+        "is_empty": False,
+        "manifest_warnings": [],
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": None,
+    }
+    risks: RiskReport = {
+        "missing_tests": False,
+        "markers": [],
+        "secrets": [],
+        "dependency_conflicts": [],
+    }
+    generator = ReportGenerator(str(tmp_path / "empty-xml"), stack, {}, git_log, risks)
+    root = ET.fromstring(generator.generate_xml())
+
+    assert root.find("tech_stack/frameworks") is not None
+    assert list(root.find("tech_stack/frameworks")) == []
+    assert root.find("hotspots") is not None
+    assert list(root.find("hotspots")) == []
+    assert root.find("risk_map") is not None
+    assert list(root.find("risk_map")) == []
+
+
+def test_generate_xml_escapes_special_characters(tmp_path: Path) -> None:
+    stack: StackResult = {
+        "languages": ["C++"],
+        "manifests": ["a&b.xml"],
+        "frameworks": ["Foo<Bar>"],
+        "dependencies": [],
+        "is_empty": False,
+        "manifest_warnings": [],
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [{"file": "src/a&b.ts", "count": 2}],
+        "status_message": None,
+    }
+    risks: RiskReport = {
+        "missing_tests": False,
+        "markers": [],
+        "secrets": [{"file": "cfg<x>.py", "line": 1, "confidence": "HIGH"}],
+        "dependency_conflicts": [],
+    }
+    xml_text = ReportGenerator(
+        str(tmp_path / "escape-repo"), stack, {}, git_log, risks
+    ).generate_xml()
+
+    assert "&amp;" in xml_text
+    assert "&lt;" in xml_text
+    root = ET.fromstring(xml_text)
+    assert root.find("tech_stack/languages/language").text == "C++"
+    assert root.find("tech_stack/manifests/manifest").text == "a&b.xml"
+    assert root.find("tech_stack/frameworks/framework").text == "Foo<Bar>"
+    assert root.find("hotspots/hotspot").attrib["file"] == "src/a&b.ts"
+    assert "cfg<x>.py" in root.find("risk_map/risk").text
+
+
+def test_write_xml_report_creates_file(tmp_path: Path) -> None:
+    output_path = tmp_path / "REBRIEF.xml"
+    generator = _make_generator(tmp_path)
+
+    generator.write_xml_report(output_path)
+
+    xml_text = output_path.read_text(encoding="utf-8")
+    root = ET.fromstring(xml_text)
+    assert root.attrib["version"] == __version__
+    assert root.find("tech_stack/frameworks/framework").text == "Django"
 
 
 def test_min_confidence_filters_low_info_items(tmp_path: Path) -> None:

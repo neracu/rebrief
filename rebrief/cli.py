@@ -35,7 +35,11 @@ console = make_console()
 
 
 def _default_output(format: str) -> str:
-    return "REBRIEF.json" if format == "json" else "REBRIEF.md"
+    if format == "json":
+        return "REBRIEF.json"
+    if format == "xml":
+        return "REBRIEF.xml"
+    return "REBRIEF.md"
 
 
 def _join_output(root: Path, resolved_output: str) -> Path:
@@ -148,12 +152,19 @@ def _run_scan_command(
 
     output_path: Path | None = None
     if write_to_stdout:
-        content = generator.generate_json() if format == "json" else generator.generate()
+        if format == "json":
+            content = generator.generate_json()
+        elif format == "xml":
+            content = generator.generate_xml()
+        else:
+            content = generator.generate()
         sys.stdout.write(content)
     else:
         output_path = _join_output(output_root, resolved_output)
         if format == "json":
             generator.write_json_report(output_path)
+        elif format == "xml":
+            generator.write_xml_report(output_path)
         else:
             generator.write_report(output_path)
 
@@ -170,7 +181,7 @@ def _run_scan_command(
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    type=click.Choice(["markdown", "json", "xml"], case_sensitive=False),
     default="markdown",
     show_default=True,
     help="Output format.",
@@ -179,7 +190,7 @@ def _run_scan_command(
     "--output",
     "-o",
     default=None,
-    help="Output path (default: REBRIEF.md or REBRIEF.json). Use '-' for stdout.",
+    help="Output path (default: REBRIEF.md, REBRIEF.json, or REBRIEF.xml). Use '-' for stdout.",
 )
 @click.option(
     "--min-confidence",

@@ -177,6 +177,15 @@ def test_prompt_settings_format_updates_default_output() -> None:
     assert result.output == "REBRIEF.json"
 
 
+def test_prompt_settings_format_xml_updates_default_output() -> None:
+    ui = _fancy_ui()
+    answers = iter(["2", "xml", "s"])
+    result = ui.prompt_settings(_settings(), input_func=lambda _: next(answers))
+    assert result is not None
+    assert result.format == "xml"
+    assert result.output == "REBRIEF.xml"
+
+
 def test_settings_region_replace_uses_cursor_restore() -> None:
     from io import StringIO
 

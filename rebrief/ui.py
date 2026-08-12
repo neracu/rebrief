@@ -58,7 +58,11 @@ InputFunc = Callable[[str], str]
 
 
 def default_output_name(format: str) -> str:
-    return "REBRIEF.json" if format == "json" else "REBRIEF.md"
+    if format == "json":
+        return "REBRIEF.json"
+    if format == "xml":
+        return "REBRIEF.xml"
+    return "REBRIEF.md"
 
 
 @dataclass
@@ -334,9 +338,9 @@ class ScanUI:
                 selected = ask(
                     "Format",
                     default=settings.format,
-                    choices=["markdown", "json"],
+                    choices=["markdown", "json", "xml"],
                 ).strip().lower()
-                if selected in {"markdown", "json"}:
+                if selected in {"markdown", "json", "xml"}:
                     settings.apply_format(selected)
             elif choice == "3":
                 selected = ask("Output path", default=settings.output).strip()

@@ -189,6 +189,28 @@
       padding: 0.15rem 0 0.15rem 0.85rem;
     }
     .md a { color: var(--accent); }
+    .chat-card { margin-top: 0.75rem; }
+    .chat-head { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); }
+    .chat-head p { margin: 0.15rem 0 0; color: var(--muted); font-size: 11px; }
+    .chat-creds { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); }
+    .chat-creds input {
+      flex: 1;
+      min-width: 8rem;
+      height: 1.85rem;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+      border-radius: 0.3rem;
+      padding: 0 0.5rem;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .chat-log { max-height: 18rem; overflow: auto; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .bubble { border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.4rem 0.55rem; font-size: 12px; line-height: 1.45; }
+    .bubble.user { align-self: flex-end; background: var(--bg); max-width: 90%; }
+    .bubble.assistant { background: transparent; }
+    .chat-form { display: flex; gap: 0.4rem; padding: 0.5rem 0.6rem; border-top: 1px solid var(--border); }
+    .chat-form input[type="text"] { flex: 1; height: 2rem; }
   </style>
 </head>
 <body>
@@ -244,6 +266,11 @@
     let startedAt = 0;
     let tick = null;
     let advance = null;
+    let chatMessages = [];
+    let chatBusy = false;
+    let chatApiKey = "";
+    let chatModel = "openai/gpt-4o-mini";
+    let lastRepoUrl = "";
 
     urlInput.addEventListener("input", () => {
       submit.disabled = scanning || !urlInput.value.trim();
@@ -409,9 +436,25 @@
             "</div>" +
           "</div>" +
           '<div class="body"><div class="md" id="preview"></div><pre class="raw hidden" id="raw"></pre></div>' +
+        "</div>" +
+        '<div class="card chat-card" id="chat-card">' +
+          '<div class="chat-head">' +
+            "<strong>Ask this repo</strong>" +
+            "<p>BYO API key is kept in memory only and is never stored.</p>" +
+          "</div>" +
+          '<div class="chat-creds">' +
+            '<input id="chat-model" type="text" spellcheck="false" placeholder="openai/gpt-4o-mini">' +
+            '<input id="chat-key" type="password" autocomplete="off" placeholder="API key (optional if the server has env keys)">' +
+          "</div>" +
+          '<div class="chat-log" id="chat-log"></div>' +
+          '<form class="chat-form" id="chat-form">' +
+            '<input id="chat-input" type="text" placeholder="Ask about this repo’s architecture, hotspots, or risks…" autocomplete="off">' +
+            '<button class="primary" id="chat-send" type="submit">Send</button>' +
+          "</form>" +
         "</div>";
       document.getElementById("preview").innerHTML = renderMarkdown(data.markdown);
       document.getElementById("raw").textContent = data.markdown;
+      bindChat(data);
 
       results.querySelectorAll("[data-tab]").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -450,6 +493,7 @@
       const trimmed = (target || "").trim();
       if (!trimmed || scanning) return;
       urlInput.value = trimmed;
+      lastRepoUrl = trimmed;
       scanning = true;
       submit.disabled = true;
       step = 0;
@@ -491,6 +535,92 @@
         clearTimeout(advance);
         renderLog(Boolean(data), error);
         if (data) renderResults(data);
+      }
+    }
+
+    function bindChat(data) {
+      chatMessages = [];
+      chatBusy = false;
+      const modelInput = document.getElementById("chat-model");
+      const keyInput = document.getElementById("chat-key");
+      const form = document.getElementById("chat-form");
+      const input = document.getElementById("chat-input");
+      modelInput.value = chatModel;
+      keyInput.value = chatApiKey;
+      modelInput.addEventListener("input", () => { chatModel = modelInput.value; });
+      keyInput.addEventListener("input", () => { chatApiKey = keyInput.value; });
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        sendChat(input.value, data);
+        input.value = "";
+      });
+    }
+
+    function appendBubble(role, text) {
+      const log = document.getElementById("chat-log");
+      const div = document.createElement("div");
+      div.className = "bubble " + role;
+      if (role === "assistant") div.className += " md";
+      if (role === "assistant") div.innerHTML = renderMarkdown(text || "…");
+      else div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+      return div;
+    }
+
+    async function sendChat(question, data) {
+      const trimmed = (question || "").trim();
+      if (!trimmed || chatBusy) return;
+      chatBusy = true;
+      document.getElementById("chat-send").disabled = true;
+      chatMessages.push({ role: "user", content: trimmed });
+      appendBubble("user", trimmed);
+      const bubble = appendBubble("assistant", "");
+      let reply = "";
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repo_url: lastRepoUrl,
+            messages: chatMessages,
+            api_key: chatApiKey || undefined,
+            model: (chatModel || "").trim() || undefined,
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(formatDetail(payload, response.status));
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) {
+            const line = part.split("\n").find((row) => row.startsWith("data:"));
+            if (!line) continue;
+            const payload = JSON.parse(line.slice(5).trim());
+            if (payload.error) throw new Error(payload.error);
+            if (payload.delta) {
+              reply += payload.delta;
+              bubble.innerHTML = renderMarkdown(reply);
+            }
+          }
+        }
+        if (reply) chatMessages.push({ role: "assistant", content: reply });
+        else bubble.textContent = "(empty reply)";
+      } catch (err) {
+        bubble.className = "bubble assistant err";
+        bubble.textContent = err instanceof Error ? err.message : "Chat failed.";
+        chatMessages.pop();
+      } finally {
+        chatBusy = false;
+        document.getElementById("chat-send").disabled = false;
       }
     }
   </script>

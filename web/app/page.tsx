@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
+import { ChatPanel } from "@/components/ChatPanel";
 import { ProgressLog, SCAN_STEPS } from "@/components/ProgressLog";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
 import { postScan, type ScanResponse } from "@/lib/api";
@@ -119,6 +120,7 @@ export default function HomePage() {
           done={Boolean(result)}
         />
         {result ? <ResultsDashboard result={result} /> : null}
+        {result ? <ChatPanel repoUrl={url} /> : null}
       </div>
 
       <footer className="mt-auto pt-8 text-[11px] text-muted">

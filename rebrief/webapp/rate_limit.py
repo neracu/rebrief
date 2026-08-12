@@ -6,10 +6,15 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 DEFAULT_SCAN_LIMIT = "10/minute"
+DEFAULT_CHAT_LIMIT = "20/minute"
 
 
 def scan_rate_limit() -> str:
     return os.environ.get("SCAN_RATE_LIMIT", DEFAULT_SCAN_LIMIT).strip() or DEFAULT_SCAN_LIMIT
+
+
+def chat_rate_limit() -> str:
+    return os.environ.get("CHAT_RATE_LIMIT", DEFAULT_CHAT_LIMIT).strip() or DEFAULT_CHAT_LIMIT
 
 
 def build_limiter() -> Limiter:

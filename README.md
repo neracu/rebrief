@@ -23,6 +23,7 @@ A local CLI that scans any codebase and produces a structured `REBRIEF.md` repor
   - [Remote repositories](#remote-repositories)
   - [MCP server](#mcp-server)
   - [Web UI](#web-ui)
+  - [Chat mode](#chat-mode)
 - [GitHub Actions](#github-actions)
   - [Set up in your repository](#set-up-in-your-repository)
   - [Use on a pull request](#use-on-a-pull-request)
@@ -99,6 +100,7 @@ If a manifest cannot be parsed, the scan continues and the report lists a **WARN
 ```bash
 pip install rebrief
 pip install "rebrief[tokens]"   # optional: accurate cl100k_base token counts
+pip install "rebrief[chat]"     # optional: rebrief chat (BYO LLM API key)
 ```
 
 ```bash
@@ -123,6 +125,7 @@ rebrief init .
 rebrief mcp                         # MCP stdio server (requires rebrief[mcp])
 rebrief mcp install                 # print IDE MCP config
 rebrief serve                       # web UI at http://127.0.0.1:8000 (requires rebrief[web])
+rebrief chat .                      # Q&A over REBRIEF.md (requires rebrief[chat])
 ```
 
 Scan the current directory (default), any local path, or a remote Git repository (HTTPS, SSH, or GitHub `owner/repo` shorthand). Markdown output defaults to `REBRIEF.md`; JSON defaults to `REBRIEF.json`; XML defaults to `REBRIEF.xml`; HTML defaults to `REBRIEF.html`. Use `-o` to set a custom path, or `-o -` to write the report to stdout. Local scans write the report inside the target repo; remote scans write it in the directory where you ran the command.
@@ -292,13 +295,35 @@ That starts the API and UI together at `http://127.0.0.1:8000/` and opens it in 
 
 `POST /api/scan` accepts `{ "url", "min_confidence", "diff_ref" }`, shallow-clones (`--depth 50`), and returns markdown, token stats, tech stack, and risk counts. Repeat requests for the same `repo_url:commit_sha` are served from cache. Rate limit: 10 scans per minute per IP.
 
+`POST /api/chat` streams Server-Sent Events for repo Q&A. Body: `{ "repo_url", "messages", "api_key?", "model?" }`. The handler reuses the scan cache for REBRIEF context, injects the system prompt server-side, and proxies the model with a BYO key (or server env vars). API keys are never written to cache, logs, or disk. Rate limit: 20 chat requests per minute per IP (`CHAT_RATE_LIMIT`).
+
 | Variable | Purpose |
 | -------- | ------- |
 | `FRONTEND_ORIGIN` | CORS allowlist for a separately hosted frontend. Default `http://localhost:3000`. Same-origin UI does not need this. |
 | `REDIS_URL` | Optional Redis for cache and rate limits. In-memory if unset. |
 | `SCAN_TIMEOUT_SECONDS` | Clone + scan wall clock. Default `120`. |
+| `CHAT_RATE_LIMIT` | Chat endpoint rate limit. Default `20/minute`. |
 
 Split deploy (optional): Docker image for the API; Vercel project root `web/` with `NEXT_PUBLIC_API_URL` pointing at the API origin.
+
+### Chat mode
+
+Ask questions about a scanned repository using the REBRIEF context window and your own LLM API key.
+
+```bash
+pip install "rebrief[chat,tokens]"
+export OPENAI_API_KEY=sk-...          # or ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY / OLLAMA_BASE_URL
+# or put the same variables in a .env file in the working directory
+rebrief chat .                        # load REBRIEF.md/json if present, otherwise scan
+rebrief chat . --file REBRIEF.md
+rebrief chat owner/repo -m anthropic/claude-3-5-sonnet
+rebrief chat . -m openrouter/openai/gpt-4o-mini
+rebrief chat . -m ollama/llama3       # local OpenAI-compatible endpoint
+```
+
+Default model is the first available provider: `anthropic/claude-3-5-sonnet`, `openai/gpt-4o-mini`, `gemini/gemini-2.0-flash`, `openrouter/openai/gpt-4o-mini`, then `ollama/llama3`. Pass `--key` to override the environment. `rebrief chat` and `rebrief serve` also read a `.env` file from the working directory (existing process env vars win). Keys are never written to disk.
+
+REPL slash commands: `/clear` (reset memory), `/copy` (clipboard last reply), `/context` (token usage), `/exit` or `/quit`.
 
 ---
 
@@ -415,6 +440,8 @@ Read REBRIEF.md before starting to understand the project's architecture and hot
 ```
 
 With MCP enabled, bind the `rebrief://summary` resource or run the `rebrief_context` prompt so the model receives the latest architectural hotspots and risks without a manual file read.
+
+Or run `rebrief chat .` to ask questions in the terminal against the same REBRIEF context window.
 
 This gives the model a structured overview of the stack, risks, and where to start - so you spend less time re-explaining the repo on every session.
 

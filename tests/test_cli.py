@@ -728,3 +728,66 @@ def test_server_alias_starts_server(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0, result.output
     assert called["n"] == 1
 
+
+def test_chat_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["chat", "--help"])
+    assert result.exit_code == 0
+    assert "--model" in result.output
+    assert "-m" in result.output
+    assert "--key" in result.output
+    assert "-k" in result.output
+    assert "--file" in result.output
+    assert "OPENROUTER_API_KEY" in result.output
+
+
+def test_chat_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> None:
+        raise ImportError("No module named 'httpx'")
+
+    monkeypatch.setattr("rebrief.cli._import_httpx", boom)
+    runner = CliRunner()
+    result = runner.invoke(main, ["chat"])
+    assert result.exit_code == 1
+    assert "rebrief[chat]" in result.output
+
+
+def test_chat_missing_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("rebrief.core.envfile.load_env_files", lambda: None)
+    for name in (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "OLLAMA_BASE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    report = tmp_path / "REBRIEF.md"
+    report.write_text("# brief\n", encoding="utf-8")
+    runner = CliRunner()
+    result = runner.invoke(main, ["chat", str(tmp_path), "--file", str(report)])
+    assert result.exit_code == 1
+    assert "ANTHROPIC_API_KEY" in result.output
+
+
+def test_chat_file_starts_repl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-key-123456")
+    report = tmp_path / "REBRIEF.md"
+    report.write_text("# REBRIEF REPORT: demo\n\nRisk map.\n", encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    def fake_repl(session: object, auth: object, console: object, **kwargs: object) -> None:
+        seen["model"] = getattr(auth, "model")
+        seen["prompt"] = getattr(session, "context").system_prompt
+
+    monkeypatch.setattr("rebrief.chat.repl.run_repl", fake_repl)
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["chat", str(tmp_path), "--file", str(report), "-m", "openai/gpt-4o-mini"],
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["model"] == "openai/gpt-4o-mini"
+    assert "BEGIN REBRIEF CONTEXT" in str(seen["prompt"])
+    assert "Risk map." in str(seen["prompt"])
+

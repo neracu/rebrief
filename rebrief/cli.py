@@ -401,6 +401,76 @@ def mcp_install(client: str, write: bool) -> None:
     install_mcp_config(client=client.lower(), write=write)
 
 
+def _import_httpx() -> object:
+    import httpx
+
+    return httpx
+
+
+@main.command("chat")
+@click.argument("target", default=".")
+@click.option(
+    "--model",
+    "-m",
+    default=None,
+    help=(
+        "Model id (anthropic/claude-3-5-sonnet, openai/gpt-4o-mini, "
+        "gemini/gemini-2.0-flash, openrouter/openai/gpt-4o-mini, ollama/llama3). "
+        "Default: first available provider."
+    ),
+)
+@click.option(
+    "--key",
+    "-k",
+    "api_key",
+    default=None,
+    help="API key override (otherwise ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY).",
+)
+@click.option(
+    "--file",
+    "report_file",
+    default=None,
+    type=click.Path(dir_okay=False),
+    help="Existing REBRIEF.md or REBRIEF.json. If omitted, load cwd/target report or scan.",
+)
+def chat(target: str, model: str | None, api_key: str | None, report_file: str | None) -> None:
+    """Ask questions about a scanned repository using your own LLM API key."""
+    try:
+        _import_httpx()
+    except ImportError:
+        from rebrief.chat import CHAT_EXTRA_HINT
+
+        click.echo(CHAT_EXTRA_HINT, err=True)
+        raise SystemExit(1)
+
+    from rebrief.chat.context import find_existing_report, load_chat_context
+    from rebrief.chat.credentials import ChatError, resolve_auth
+    from rebrief.chat.repl import run_repl
+    from rebrief.chat.session import ChatSession
+    from rebrief.core.envfile import load_env_files
+
+    load_env_files()
+    scan_ui = ScanUI.create()
+    try:
+        auth = resolve_auth(model=model, api_key=api_key)
+        needs_scan = report_file is None and find_existing_report(target) is None
+        if needs_scan:
+            scan_ui.print_banner()
+            with scan_ui.scan_progress() as status:
+                context = load_chat_context(target, status=status)
+        else:
+            context = load_chat_context(target, report_file)
+    except ChatError as exc:
+        scan_ui.print_error(str(exc))
+        raise SystemExit(1) from exc
+    except RemoteCloneError as exc:
+        scan_ui.print_error(str(exc))
+        raise SystemExit(1) from exc
+
+    session = ChatSession(context=context, model=auth.model)
+    run_repl(session, auth, scan_ui.console)
+
+
 @main.command("server")
 def server() -> None:
     """Alias for `rebrief mcp` — start an MCP server over stdio."""

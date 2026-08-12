@@ -6,13 +6,14 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from rebrief.webapp.cache import build_cache
-from rebrief.webapp.rate_limit import build_limiter, scan_rate_limit
-from rebrief.webapp.schemas import ScanRequest, ScanResponse
+from rebrief.webapp.chat import iter_chat_sse
+from rebrief.webapp.rate_limit import build_limiter, chat_rate_limit, scan_rate_limit
+from rebrief.webapp.schemas import ChatRequest, ScanRequest, ScanResponse
 from rebrief.webapp.service import ScanTimeoutError, WebScanError, scan_public_repo
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -32,6 +33,9 @@ def _cors_origins() -> list[str]:
 
 
 def create_app() -> FastAPI:
+    from rebrief.core.envfile import load_env_files
+
+    load_env_files()
     app = FastAPI(title="rebrief", docs_url=None, redoc_url=None)
     limiter = build_limiter()
     app.state.limiter = limiter
@@ -72,6 +76,27 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
         except ScanTimeoutError as exc:
             raise HTTPException(status_code=504, detail=str(exc)) from exc
+
+    @app.post("/api/chat")
+    @limiter.limit(chat_rate_limit())
+    def chat(request: Request, body: ChatRequest, response: Response) -> StreamingResponse:
+        try:
+            scan = scan_public_repo(
+                body.repo_url,
+                cache=request.app.state.scan_cache,
+            )
+        except WebScanError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        except ScanTimeoutError as exc:
+            raise HTTPException(status_code=504, detail=str(exc)) from exc
+        return StreamingResponse(
+            iter_chat_sse(body, scan.markdown),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/")
     def ui_index() -> FileResponse:

@@ -34,6 +34,18 @@ export type ScanRequest = {
   diff_ref?: string | null;
 };
 
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type ChatRequest = {
+  repo_url: string;
+  messages: ChatMessage[];
+  api_key?: string;
+  model?: string;
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 export async function postScan(body: ScanRequest): Promise<ScanResponse> {
@@ -59,6 +71,55 @@ export async function postScan(body: ScanRequest): Promise<ScanResponse> {
     throw new Error("Unexpected response from scan API.");
   }
   return payload;
+}
+
+export async function streamChat(
+  body: ChatRequest,
+  onDelta: (text: string) => void,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+    throw new Error(formatDetail(payload, response.status));
+  }
+  if (!response.body) {
+    throw new Error("Chat stream was empty.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.split("\n").find((row) => row.startsWith("data:"));
+      if (!line) {
+        continue;
+      }
+      const payload = JSON.parse(line.slice(5).trim()) as {
+        delta?: string;
+        done?: boolean;
+        error?: string;
+      };
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+      if (payload.delta) {
+        onDelta(payload.delta);
+      }
+    }
+  }
 }
 
 function formatDetail(payload: { detail?: unknown } | null, status: number): string {

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import IO, TextIO
 
 from rich import box
+from rich.align import Align
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -24,20 +25,38 @@ from rebrief.core.tokens import (
     format_savings_cli,
 )
 
-BANNER_ART = """\
-██████╗ ███████╗██████╗ ██████╗ ██╗███████╗███████╗
-██╔══██╗██╔════╝██╔══██╗██╔══██╗██║██╔════╝██╔════╝
-██████╔╝█████╗  ██████╔╝██████╔╝██║█████╗  █████╗
-██╔══██╗██╔══╝  ██╔══██╗██╔══██╗██║██╔══╝  ██╔══╝
-██║  ██║███████╗██████╔╝██║  ██║██║███████╗██║
-╚═╝  ╚═╝╚══════╝╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚═╝"""
 
-BANNER_ART_ASCII = """\
-#####  #####  #####  #####  #  #####  #####
-#   #  #      #   #  #   #  #  #      #
-#####  #####  #####  #####  #  #####  #####
-#  #   #      #   #  #  #   #  #      #
-#   #  #####  #####  #   #  #  #####  #"""
+def _pad_rows(*rows: str) -> tuple[str, ...]:
+    width = max(len(row) for row in rows)
+    return tuple(row.ljust(width) for row in rows)
+
+
+def _flatten_mask(mask: str, front: str, side: str) -> str:
+    chars: list[str] = []
+    for char in mask:
+        if char in " \n":
+            chars.append(char)
+        elif char == "█":
+            chars.append(front)
+        else:
+            chars.append(side)
+    return "".join(chars)
+
+
+# ANSI Shadow letterforms. █ is the face; box-drawing marks the 3D extrusion.
+_BANNER_MASK = "\n".join(
+    _pad_rows(
+        "██████╗ ███████╗██████╗ ██████╗ ██╗███████╗███████╗",
+        "██╔══██╗██╔════╝██╔══██╗██╔══██╗██║██╔════╝██╔════╝",
+        "██████╔╝█████╗  ██████╔╝██████╔╝██║█████╗  █████╗",
+        "██╔══██╗██╔══╝  ██╔══██╗██╔══██╗██║██╔══╝  ██╔══╝",
+        "██║  ██║███████╗██████╔╝██║  ██║██║███████╗██║",
+        "╚═╝  ╚═╝╚══════╝╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚═╝",
+    )
+)
+BANNER_ART = _flatten_mask(_BANNER_MASK, "█", "▓")
+BANNER_ART_ASCII = _flatten_mask(_BANNER_MASK, "#", "\\")
+_BANNER_STOPS = ((0x67, 0xE8, 0xF9), (0x22, 0xD3, 0xEE), (0x0E, 0xA5, 0xE9))
 
 SUBTITLE = "Token-Efficient Codebase Briefings for AI Agents"
 CHURN_BAR_WIDTH = 12
@@ -135,6 +154,44 @@ def _supports_glyph(console: Console, glyph: str) -> bool:
     return True
 
 
+def _banner_color(x: int, width: int) -> str:
+    if width <= 1:
+        r, g, b = _BANNER_STOPS[0]
+        return f"#{r:02x}{g:02x}{b:02x}"
+    pos = x / (width - 1) * (len(_BANNER_STOPS) - 1)
+    index = min(int(pos), len(_BANNER_STOPS) - 2)
+    t = pos - index
+    start, end = _BANNER_STOPS[index], _BANNER_STOPS[index + 1]
+    red = int(start[0] + (end[0] - start[0]) * t)
+    green = int(start[1] + (end[1] - start[1]) * t)
+    blue = int(start[2] + (end[2] - start[2]) * t)
+    return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def _shade(color: str, factor: float) -> str:
+    red = max(0, min(255, int(int(color[1:3], 16) * factor)))
+    green = max(0, min(255, int(int(color[3:5], 16) * factor)))
+    blue = max(0, min(255, int(int(color[5:7], 16) * factor)))
+    return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def _paint_banner(mask: str, *, front: str, side: str) -> Text:
+    lines = mask.split("\n")
+    width = max(len(line) for line in lines)
+    painted = Text()
+    for row, line in enumerate(lines):
+        if row:
+            painted.append("\n")
+        for x, char in enumerate(line.ljust(width)):
+            if char == " ":
+                painted.append(" ")
+            elif char == "█":
+                painted.append(front, style=f"bold {_banner_color(x, width)}")
+            else:
+                painted.append(side, style=_shade(_banner_color(x, width), 0.38))
+    return painted
+
+
 def _join_or_none(values: list[str]) -> str:
     return ", ".join(values) if values else NONE_DETECTED
 
@@ -200,22 +257,29 @@ class ScanUI:
             self.console.print(f"rebrief — {SUBTITLE}")
             return
 
-        art = Text(self.banner_art(), style="bold cyan", justify="center")
-        subtitle = Text(justify="center")
+        if _supports_glyph(self.console, "█▓"):
+            painted = _paint_banner(_BANNER_MASK, front="█", side="▓")
+        else:
+            painted = _paint_banner(_BANNER_MASK, front="#", side="\\")
+        title = Align.center(painted)
+        rule_char = "─" if _supports_glyph(self.console, "─") else "-"
+        rule_width = max(len(line) for line in painted.plain.split("\n"))
+        rule = Align.center(Text(rule_char * rule_width, style="dim cyan"))
+        subtitle = Text()
         if _supports_glyph(self.console, "⚡"):
             subtitle.append("⚡ ", style="yellow")
         subtitle.append(SUBTITLE, style="dim")
         self.console.print(
             Panel(
-                Group(art, Text(""), subtitle),
+                Group(title, Text(""), rule, Align.center(subtitle)),
                 box=box.ROUNDED,
                 border_style="cyan",
-                padding=(1, 2),
+                padding=(1, 3),
             )
         )
 
     def banner_art(self) -> str:
-        sample = "█╗"
+        sample = "█▓"
         if _supports_glyph(self.console, sample):
             return BANNER_ART
         return BANNER_ART_ASCII

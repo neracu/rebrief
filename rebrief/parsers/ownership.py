@@ -291,8 +291,12 @@ class OwnershipParser:
         *,
         paths: list[str] | None = None,
         skip: bool = False,
+        git_root: str | Path | None = None,
+        path_prefix: str | None = None,
     ) -> None:
         self._repo_path = Path(repo_path)
+        self._git_root = Path(git_root) if git_root is not None else self._repo_path
+        self._path_prefix = path_prefix
         self._paths = paths
         self._skip = skip
         self._ignore_matcher = IgnoreMatcher(repo_path)
@@ -301,7 +305,7 @@ class OwnershipParser:
         if self._skip:
             return _empty_result(skipped=True, skip_reason="disabled via --no-blame")
 
-        if not (self._repo_path / ".git").exists():
+        if not (self._git_root / ".git").exists():
             return _empty_result()
 
         try:
@@ -363,12 +367,21 @@ class OwnershipParser:
     def _run_git(self, args: list[str]) -> str:
         result = subprocess.run(
             ["git", *args],
-            cwd=self._repo_path,
+            cwd=self._git_root,
             capture_output=True,
             text=True,
             check=True,
         )
         return result.stdout
+
+    def _matches_prefix(self, path: str) -> bool:
+        if self._path_prefix is None:
+            return True
+        normalized = path.replace("\\", "/")
+        prefix = self._path_prefix
+        if prefix.endswith("/"):
+            return normalized.startswith(prefix) or normalized == prefix.rstrip("/")
+        return normalized.startswith(f"{prefix}/") or normalized == prefix
 
     def _collect_blame_files(self) -> list[str]:
         if self._paths is not None:
@@ -383,9 +396,11 @@ class OwnershipParser:
 
         eligible: list[tuple[int, str]] = []
         for relative in candidates:
+            if not self._matches_prefix(relative):
+                continue
             if not self._is_eligible_source(relative):
                 continue
-            file_path = self._repo_path / relative
+            file_path = self._git_root / relative
             if not file_path.is_file():
                 continue
             try:
@@ -427,7 +442,7 @@ class OwnershipParser:
         return True
 
     def _file_has_inline_ai_signature(self, relative: str) -> bool:
-        file_path = self._repo_path / relative
+        file_path = self._git_root / relative
         try:
             data = file_path.read_bytes()
         except OSError:

@@ -36,6 +36,7 @@ Point it at any local repo or a remote Git URL. rebrief walks the stack, rules, 
   - [HTML output](#html-output)
   - [Excluding paths with `.rebriefignore`](#excluding-paths-with-rebriefignore)
   - [Remote repositories](#remote-repositories)
+  - [Multi-repository system briefings](#multi-repository-system-briefings)
   - [MCP server](#mcp-server)
   - [Web UI](#web-ui)
   - [Chat mode](#chat-mode)
@@ -125,6 +126,8 @@ rebrief scan . --diff               # incremental vs HEAD~1
 rebrief scan . --diff origin/main   # incremental vs PR/base ref
 rebrief scan . --skip-vulnerability-check  # skip remote OSV CVE checks
 rebrief scan . --no-blame                  # skip git blame ownership analysis
+rebrief multi ./frontend ./backend         # unified system briefing → REBRIEF-SYSTEM.md
+rebrief multi . -f json                    # → REBRIEF-SYSTEM.json
 rebrief badge .                     # Shields.io Markdown + HTML to stdout
 rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .
@@ -245,6 +248,32 @@ rebrief scan git@github.com:owner/repo.git
 Private repositories use your local Git credentials (SSH keys, `gh` auth, credential helpers). You can also set `GITHUB_TOKEN` or `GIT_AUTH_TOKEN` for HTTPS clones. If the clone fails, rebrief exits with:
 
 `Error: Unable to access remote repository. Check the URL or your Git authentication credentials.`
+
+### Multi-repository system briefings
+
+Combine multiple linked codebases (frontend + backend + infra) or monorepo workspace packages into one unified architecture briefing:
+
+```bash
+rebrief multi ./frontend ./backend
+rebrief multi ./frontend https://github.com/org/backend
+rebrief multi .                              # auto-expand pnpm/lerna/npm/Cargo workspaces
+rebrief multi ./apps/web ./apps/api -f json  # → REBRIEF-SYSTEM.json
+rebrief multi ./frontend ./backend -o -      # Markdown to stdout (status on stderr)
+```
+
+`rebrief multi` accepts any mix of local paths and remote Git URLs (HTTPS, SSH, or GitHub `owner/repo` shorthand). When a target root contains `pnpm-workspace.yaml`, `lerna.json`, npm `workspaces`, or a Cargo `[workspace]`, rebrief expands it into member packages automatically.
+
+The default output is `REBRIEF-SYSTEM.md` in the directory where you ran the command. JSON (`-f json`) writes `REBRIEF-SYSTEM.json`; XML (`-f xml`) writes `REBRIEF-SYSTEM.xml`.
+
+The system report includes:
+
+- **System architecture summary** — aggregated tiers (Frontend / Backend / Infra / Shared) across all services
+- **Cross-repo hotspot matrix** — ranked churn across packages
+- **Unified risk map** — merged critical items, warnings, and vulnerabilities with `[service]` prefixes
+- **Shared dependency graph** — duplicated or version-mismatched dependencies across packages
+- **Per-service sections** — condensed stack, hotspots, and risks for each scanned member
+
+Use the same confidence, vulnerability, and blame flags as `rebrief scan` (`-c`, `--skip-vulnerability-check`, `--no-blame`).
 
 ### MCP server
 

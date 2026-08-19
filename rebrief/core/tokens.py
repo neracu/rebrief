@@ -11,7 +11,17 @@ FALLBACK_TOKENIZER = "char_ratio"
 CHAR_RATIO = 4
 MAX_FILE_BYTES = 10 * 1024 * 1024
 BINARY_PEEK_BYTES = 8192
-SKIP_REPORT_NAMES = frozenset({"REBRIEF.md", "REBRIEF.json", "REBRIEF.xml", "REBRIEF.html"})
+SKIP_REPORT_NAMES = frozenset(
+    {
+        "REBRIEF.md",
+        "REBRIEF.json",
+        "REBRIEF.xml",
+        "REBRIEF.html",
+        "REBRIEF-SYSTEM.md",
+        "REBRIEF-SYSTEM.json",
+        "REBRIEF-SYSTEM.xml",
+    }
+)
 
 BINARY_EXTENSIONS: frozenset[str] = frozenset(
     {

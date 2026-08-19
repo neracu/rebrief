@@ -53,13 +53,18 @@ class GitLogParser:
         repo_path: str,
         diff_ref: str | None = None,
         max_churn_files: int = MAX_CHURN_FILES,
+        *,
+        git_root: str | Path | None = None,
+        path_prefix: str | None = None,
     ) -> None:
         self._repo_path = Path(repo_path)
+        self._git_root = Path(git_root) if git_root is not None else self._repo_path
+        self._path_prefix = path_prefix
         self._diff_ref = diff_ref
         self._max_churn_files = max_churn_files
 
     def parse(self) -> GitLogResult:
-        if not (self._repo_path / ".git").exists():
+        if not (self._git_root / ".git").exists():
             return _empty_result(POINT_ZERO_MESSAGE)
 
         if self._diff_ref is not None:
@@ -133,12 +138,21 @@ class GitLogParser:
     def _run_git(self, args: list[str]) -> str:
         result = subprocess.run(
             ["git", *args],
-            cwd=self._repo_path,
+            cwd=self._git_root,
             capture_output=True,
             text=True,
             check=True,
         )
         return result.stdout
+
+    def _matches_prefix(self, path: str) -> bool:
+        if self._path_prefix is None:
+            return True
+        normalized = path.replace("\\", "/")
+        prefix = self._path_prefix
+        if prefix.endswith("/"):
+            return normalized.startswith(prefix) or normalized == prefix.rstrip("/")
+        return normalized.startswith(f"{prefix}/") or normalized == prefix
 
     def _parse_commits(self, raw: str) -> list[GitCommit]:
         commits: list[GitCommit] = []
@@ -217,7 +231,7 @@ class GitLogParser:
         counts = Counter(
             line.strip()
             for line in raw.splitlines()
-            if line.strip()
+            if line.strip() and self._matches_prefix(line.strip())
         )
 
         ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -250,7 +264,9 @@ class GitLogParser:
             if " => " in path:
                 path = path.split(" => ", 1)[1]
             path = path.replace("\\", "/")
-            if not (self._repo_path / path).is_file():
+            if not self._matches_prefix(path):
+                continue
+            if not (self._git_root / path).is_file():
                 continue
             counts[path] += changes
 

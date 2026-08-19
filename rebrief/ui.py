@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, TextIO
+from typing import IO, TextIO, TYPE_CHECKING
 
 from rich import box
 from rich.align import Align
@@ -24,6 +24,9 @@ from rebrief.core.tokens import (
     format_raw_cli,
     format_savings_cli,
 )
+
+if TYPE_CHECKING:
+    from rebrief.core.system_report import SystemReportPayload
 
 
 def _pad_rows(*rows: str) -> tuple[str, ...]:
@@ -695,6 +698,54 @@ class ScanUI:
                 border_style="magenta",
                 box=box.ROUNDED,
             )
+        )
+
+    def print_system_results(
+        self,
+        payload: SystemReportPayload,
+        *,
+        output_path: Path | None,
+    ) -> None:
+        table = Table(
+            title="System Architecture",
+            box=box.SIMPLE_HEAD,
+            show_header=True,
+            header_style="bold",
+            padding=(0, 1),
+        )
+        table.add_column("Field", style="dim", no_wrap=True)
+        table.add_column("Value", overflow="fold")
+        table.add_row("Services", str(payload["summary"]["services_count"]))
+        table.add_row("Architecture", payload["architecture_line"])
+        table.add_row("Unified risks", str(payload["summary"]["risks_count"]))
+        self.console.print(table)
+
+        hotspots = payload["hotspot_matrix"][:10]
+        hotspot_table = Table(
+            title="Cross-Repo Hotspots",
+            box=box.SIMPLE_HEAD,
+            show_header=True,
+            header_style="bold",
+            padding=(0, 1),
+        )
+        hotspot_table.add_column("Service", no_wrap=True)
+        hotspot_table.add_column("File", overflow="fold")
+        hotspot_table.add_column("Changes", justify="right", no_wrap=True)
+        if not hotspots:
+            hotspot_table.add_row(Text(NONE_DETECTED, style="dim"), "", "")
+        else:
+            for entry in hotspots:
+                hotspot_table.add_row(
+                    entry["service"],
+                    entry["file"],
+                    str(entry["changes"]),
+                )
+        self.console.print(hotspot_table)
+
+        self._print_token_savings(payload["summary"]["token_stats"])
+        self.print_completion(
+            output_path=output_path,
+            brief_tokens=payload["summary"]["token_stats"]["brief_tokens"],
         )
 
 

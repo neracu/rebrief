@@ -1,4 +1,5 @@
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 
 import click
@@ -9,6 +10,7 @@ from rebrief.core.badge import BADGE_LINK, inject_readme_badge
 from rebrief.core.confidence import Confidence, parse_min_confidence
 from rebrief.core.diff import DiffError, DiffScope, resolve_diff_scope
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
+from rebrief.core.multi import build_system_report, resolve_target_members, run_multi_scan
 from rebrief.core.remote import (
     RemoteCloneError,
     resolve_remote_target,
@@ -42,6 +44,14 @@ def _default_output(format: str) -> str:
     if format == "html":
         return "REBRIEF.html"
     return "REBRIEF.md"
+
+
+def _default_system_output(format: str) -> str:
+    if format == "json":
+        return "REBRIEF-SYSTEM.json"
+    if format == "xml":
+        return "REBRIEF-SYSTEM.xml"
+    return "REBRIEF-SYSTEM.md"
 
 
 def _join_output(root: Path, resolved_output: str) -> Path:
@@ -354,6 +364,119 @@ def scan(
         skip_vulnerability_check=skip_vulnerability_check,
         no_blame=no_blame,
     )
+
+
+@main.command("multi")
+@click.argument("targets", nargs=-1)
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["markdown", "json", "xml"], case_sensitive=False),
+    default="markdown",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    help=(
+        "Output path (default: REBRIEF-SYSTEM.md or REBRIEF-SYSTEM.json). "
+        "Use '-' for stdout."
+    ),
+)
+@click.option(
+    "--min-confidence",
+    "-c",
+    type=click.Choice(["high", "medium", "low"], case_sensitive=False),
+    default="medium",
+    show_default=True,
+    help="Minimum confidence level for risks included in the report.",
+)
+@click.option(
+    "--plain",
+    "--no-color",
+    "plain",
+    is_flag=True,
+    default=False,
+    help="Disable banners, colors, and unicode (script-friendly output).",
+)
+@click.option(
+    "--skip-vulnerability-check",
+    is_flag=True,
+    default=False,
+    help="Skip remote OSV API calls (air-gapped / faster local scans).",
+)
+@click.option(
+    "--no-blame",
+    is_flag=True,
+    default=False,
+    help="Skip git blame ownership analysis on large repositories.",
+)
+def multi(
+    targets: tuple[str, ...],
+    format: str,
+    output: str | None,
+    min_confidence: str,
+    plain: bool,
+    skip_vulnerability_check: bool,
+    no_blame: bool,
+) -> None:
+    """Scan multiple repositories or monorepo workspaces into one system briefing."""
+    format = format.lower()
+    resolved_output = output or _default_system_output(format)
+    write_to_stdout = resolved_output == "-"
+    ui_file = sys.stderr if write_to_stdout else sys.stdout
+    scan_ui = ScanUI.create(plain=plain, file=ui_file)
+    scan_ui.print_banner()
+
+    target_list = list(targets) if targets else ["."]
+    scan_ui.print_scan_header(
+        path=", ".join(target_list),
+        format=format,
+        output=resolved_output,
+    )
+
+    try:
+        with ExitStack() as stack:
+            members = resolve_target_members(target_list, stack, scan_ui=scan_ui)
+            services = run_multi_scan(
+                members,
+                parse_min_confidence(min_confidence),
+                scan_ui=scan_ui,
+                skip_vulnerability_check=skip_vulnerability_check,
+                no_blame=no_blame,
+            )
+    except RemoteCloneError as exc:
+        scan_ui.print_error(str(exc))
+        raise SystemExit(1) from exc
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        scan_ui.print_error(str(exc))
+        raise SystemExit(1) from exc
+
+    report = build_system_report(services)
+    output_path: Path | None = None
+
+    if write_to_stdout:
+        if format == "json":
+            content = report.generate_json()
+        elif format == "xml":
+            content = report.generate_xml()
+        else:
+            content = report.generate()
+        sys.stdout.write(content)
+    else:
+        output_path = Path(resolved_output)
+        if not output_path.is_absolute():
+            output_path = Path.cwd() / output_path
+        if format == "json":
+            report.write_json_report(output_path)
+        elif format == "xml":
+            report.write_xml_report(output_path)
+        else:
+            report.write_report(output_path)
+
+    scan_ui.print_system_results(report.to_dict(), output_path=output_path)
 
 
 @main.command()

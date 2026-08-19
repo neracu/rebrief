@@ -27,10 +27,13 @@ def run_scan(
     status: StatusFactory | None = None,
     skip_vulnerability_check: bool = False,
     no_blame: bool = False,
+    git_root: str | Path | None = None,
+    path_prefix: str | None = None,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     step = status or (lambda _message: nullcontext())
     repo = str(Path(repo_path).resolve())
+    resolved_git_root = str(Path(git_root).resolve()) if git_root is not None else None
     paths = diff_scope["files"] if diff_scope is not None else None
     diff_ref = diff_scope["ref"] if diff_scope is not None else None
 
@@ -39,13 +42,26 @@ def run_scan(
         rules = RulesParser(repo).parse()
 
     with step("[2/4] Analyzing git history & hotspots..."):
+        git_kwargs = {
+            "git_root": resolved_git_root,
+            "path_prefix": path_prefix,
+        }
         if max_churn_files is None:
-            git_log = GitLogParser(repo, diff_ref=diff_ref).parse()
+            git_log = GitLogParser(repo, diff_ref=diff_ref, **git_kwargs).parse()
         else:
             git_log = GitLogParser(
-                repo, diff_ref=diff_ref, max_churn_files=max_churn_files
+                repo,
+                diff_ref=diff_ref,
+                max_churn_files=max_churn_files,
+                **git_kwargs,
             ).parse()
-        ownership = OwnershipParser(repo, paths=paths, skip=no_blame).parse()
+        ownership = OwnershipParser(
+            repo,
+            paths=paths,
+            skip=no_blame,
+            git_root=resolved_git_root,
+            path_prefix=path_prefix,
+        ).parse()
 
     with step("[3/4] Running risk detectors & vulnerability checks..."):
         risks = RisksParser(

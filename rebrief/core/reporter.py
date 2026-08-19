@@ -18,6 +18,7 @@ from rebrief.core.tokens import (
 )
 from rebrief.core.vulnerabilities import VulnerabilityReport
 from rebrief.parsers.git_log import GitLogResult
+from rebrief.parsers.manifests.versions import PackageSpec
 from rebrief.parsers.ownership import (
     ModuleOwnership,
     OwnershipResult,
@@ -154,6 +155,10 @@ class ReportGenerator:
             "skip_reason": "disabled via --no-blame" if no_blame else None,
         }
         self._no_blame = no_blame
+
+    @property
+    def stack_packages(self) -> list[PackageSpec]:
+        return list(self._stack["packages"])
 
     def generate(self) -> str:
         body = self._body()

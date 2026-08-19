@@ -132,3 +132,109 @@ def test_cli_scan_json_includes_doc_drift() -> None:
     doc_drift = payload["summary"]["doc_drift"]
     assert "freshness_score" in doc_drift
     assert doc_drift["items"]
+
+
+def test_backtick_cli_flags_are_not_paths(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "Use `--no-blame`, `freshness_score`, and `rebrief scan`.\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "path"] == []
+
+
+def test_dotfile_path_preserves_leading_dot(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "See `.cursorrules` for rules.\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    path_items = [item for item in result["items"] if item["kind"] == "path"]
+    assert len(path_items) == 1
+    assert "`.cursorrules`" in path_items[0]["message"]
+
+
+def test_catalog_readme_does_not_flag_stack(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "Supports Vue, React, and Angular frontends.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "package.json").write_text(
+        '{"dependencies":{"react":"^18.0.0"}}',
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "stack"] == []
+
+
+def test_react_and_next_not_conflicting(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "Built with React and Next.js.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "package.json").write_text(
+        '{"dependencies":{"react":"^18.0.0","next":"^14.0.0"}}',
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "stack"] == []
+
+
+def test_code_constants_are_not_env_vars(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "Edit `MANIFEST_FILES` and `FRAMEWORK_SIGNATURES` in rules.py.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env.example").write_text("API_KEY=value\n", encoding="utf-8")
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    env_items = [item for item in result["items"] if item["kind"] == "env"]
+    assert not any("MANIFEST_FILES" in item["message"] for item in env_items)
+    assert not any("FRAMEWORK_SIGNATURES" in item["message"] for item in env_items)
+
+
+def test_nested_package_json_counts_as_valid(tmp_path: Path) -> None:
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "package.json").write_text('{"name":"web"}', encoding="utf-8")
+    (tmp_path / "README.md").write_text(
+        "See `package.json` for dependencies.\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "path"] == []
+
+
+def test_generated_rebrief_md_is_not_flagged(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "Output is written to `REBRIEF.md`.\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "path"] == []
+
+
+def test_json_property_paths_are_not_flagged(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "See `summary.token_stats` and `summary.files_scanned` in JSON.\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "path"] == []
+
+
+def test_manifest_catalog_skips_supported_format_list(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "Supports `go.mod`, `Cargo.toml`, `pom.xml`, and `composer.json`.\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "path"] == []
+
+
+def test_paths_inside_code_blocks_are_ignored(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text(
+        "## Example\n```markdown\nSee `apps/backend` and `src/app.py`.\n```\n",
+        encoding="utf-8",
+    )
+    result = FreshnessParser(str(tmp_path), _parse_stack(tmp_path)).parse()
+    assert [item for item in result["items"] if item["kind"] == "path"] == []

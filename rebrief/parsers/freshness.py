@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 import subprocess
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Literal, TypedDict
 
 from rebrief.core.confidence import Confidence
+from rebrief.core.ignore import IgnoreMatcher
 from rebrief.parsers.stack import StackResult
 
 DocDriftSeverity = Literal["warning", "info"]
@@ -30,7 +32,59 @@ ENV_EXAMPLE_FILES: tuple[str, ...] = (
 CURSOR_RULES_DIR = Path(".cursor") / "rules"
 MDC_SUFFIX = ".mdc"
 
-# Rival families: documented keyword -> family id
+KNOWN_FILENAMES: frozenset[str] = frozenset(
+    {
+        "readme.md",
+        "contributing.md",
+        "package.json",
+        "package-lock.json",
+        "pyproject.toml",
+        "requirements.txt",
+        "poetry.lock",
+        "go.mod",
+        "cargo.toml",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "composer.json",
+        "gemfile",
+        "claude.md",
+        "agents.md",
+        ".cursorrules",
+        ".env.example",
+        "env.example",
+        "manage.py",
+        "dockerfile",
+        "docker-compose.yml",
+        "tsconfig.json",
+        "next.config.js",
+        "next.config.mjs",
+        "vite.config.js",
+        "vite.config.ts",
+        "angular.json",
+        "svelte.config.js",
+        "nuxt.config.js",
+        "nuxt.config.ts",
+        "remix.config.js",
+        "pnpm-workspace.yaml",
+        "lerna.json",
+    }
+)
+
+GENERATED_ARTIFACTS: frozenset[str] = frozenset(
+    {
+        "rebrief.md",
+        "rebrief.json",
+        "rebrief.xml",
+        "rebrief.html",
+        "rebrief-system.md",
+        "rebrief-system.json",
+        "rebrief-system.xml",
+        "handoff.md",
+    }
+)
+
+# documented keyword -> family id
 STACK_KEYWORDS: dict[str, str] = {
     "vue": "frontend",
     "vue 2": "frontend",
@@ -38,9 +92,10 @@ STACK_KEYWORDS: dict[str, str] = {
     "react": "frontend",
     "angular": "frontend",
     "svelte": "frontend",
-    "next.js": "frontend",
-    "nextjs": "frontend",
-    "nuxt": "frontend",
+    "next.js": "meta_framework",
+    "nextjs": "meta_framework",
+    "nuxt": "meta_framework",
+    "remix": "meta_framework",
     "webpack": "bundler",
     "vite": "bundler",
     "rollup": "bundler",
@@ -65,16 +120,52 @@ STACK_KEYWORDS: dict[str, str] = {
     "ruby": "language",
 }
 
+KEYWORD_TO_DISPLAY: dict[str, str] = {
+    "vue": "Vue",
+    "vue 2": "Vue",
+    "vue 3": "Vue",
+    "react": "React",
+    "angular": "Angular",
+    "svelte": "Svelte",
+    "next.js": "Next.js",
+    "nextjs": "Next.js",
+    "nuxt": "Nuxt",
+    "remix": "Remix",
+    "webpack": "Webpack",
+    "vite": "Vite",
+    "rollup": "Rollup",
+    "parcel": "Parcel",
+    "django": "Django",
+    "flask": "Flask",
+    "fastapi": "FastAPI",
+    "express": "Express",
+    "nestjs": "NestJS",
+    "spring boot": "Spring Boot",
+    "laravel": "Laravel",
+    "rails": "Rails",
+    "typescript": "TypeScript",
+    "javascript": "JavaScript",
+    "python": "Python",
+    "go": "Go",
+    "golang": "Go",
+    "rust": "Rust",
+    "java": "Java",
+    "kotlin": "Kotlin",
+    "php": "PHP",
+    "ruby": "Ruby",
+}
+
 # Map detected stack signals to families / display names
 DETECTED_STACK_SIGNALS: dict[str, tuple[str, str]] = {
-    # (family, display_name)
     "react": ("frontend", "React"),
     "vue": ("frontend", "Vue"),
     "@angular/core": ("frontend", "Angular"),
     "angular": ("frontend", "Angular"),
     "svelte": ("frontend", "Svelte"),
-    "next": ("frontend", "Next.js"),
-    "nuxt": ("frontend", "Nuxt.js"),
+    "next": ("meta_framework", "Next.js"),
+    "nuxt": ("meta_framework", "Nuxt"),
+    "@remix-run/node": ("meta_framework", "Remix"),
+    "remix": ("meta_framework", "Remix"),
     "vite": ("bundler", "Vite"),
     "webpack": ("bundler", "Webpack"),
     "django": ("python_web", "Django"),
@@ -94,6 +185,7 @@ FRAMEWORK_TO_DISPLAY: dict[str, str] = {
     "Svelte": "Svelte",
     "Next.js": "Next.js",
     "Nuxt.js": "Nuxt",
+    "Remix": "Remix",
     "Vite": "Vite",
     "Django": "Django",
     "Flask": "Flask",
@@ -105,18 +197,7 @@ FRAMEWORK_TO_DISPLAY: dict[str, str] = {
     "Rails": "Rails",
 }
 
-LANGUAGE_TO_FAMILY: dict[str, str] = {
-    "JavaScript/TypeScript": "language",
-    "Python": "language",
-    "Go": "language",
-    "Rust": "language",
-    "Java": "language",
-    "Kotlin": "language",
-    "PHP": "language",
-    "Ruby": "language",
-}
-
-LANGUAGE_DISPLAY: dict[str, str] = {
+LANGUAGE_TO_DISPLAY: dict[str, str] = {
     "JavaScript/TypeScript": "JavaScript/TypeScript",
     "Python": "Python",
     "Go": "Go",
@@ -144,7 +225,6 @@ ENV_PROCESS_RE = re.compile(
     r"os\.getenv\(['\"]|getenv\(['\"]|ENV\[['\"])([A-Z][A-Z0-9_]*)",
 )
 ENV_DOLLAR_RE = re.compile(r"\$([A-Z][A-Z0-9_]{2,})\b")
-ENV_BACKTICK_RE = re.compile(r"`([A-Z][A-Z0-9_]{2,})`")
 
 GENERIC_PATH_WORDS: frozenset[str] = frozenset(
     {
@@ -157,17 +237,82 @@ GENERIC_PATH_WORDS: frozenset[str] = frozenset(
         "config",
         "api",
         "env",
-        "http",
-        "https",
-        "www",
-        "example",
-        "com",
-        "org",
-        "io",
-        "npm",
-        "github",
     }
 )
+
+VALID_PATH_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".md",
+        ".json",
+        ".js",
+        ".mjs",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".py",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".xml",
+        ".html",
+        ".lock",
+        ".mod",
+        ".cfg",
+        ".mdc",
+        ".kts",
+        ".gradle",
+        ".gemspec",
+        ".example",
+        ".sample",
+        ".template",
+        ".ini",
+        ".txt",
+    }
+)
+
+PATH_ROOT_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "src",
+        "lib",
+        "app",
+        "apps",
+        "packages",
+        "components",
+        "pages",
+        "services",
+        "api",
+        "backend",
+        "frontend",
+        "docs",
+        "tests",
+        "test",
+        "__tests__",
+        "config",
+        "scripts",
+        "public",
+        "static",
+        "assets",
+        "web",
+        "rebrief",
+        ".cursor",
+        ".github",
+        ".venv",
+        "venv",
+        "node_modules",
+    }
+)
+
+TOOL_INTERNAL_PREFIXES: tuple[str, ...] = (
+    ".rebrief",
+    ".rebrief/",
+)
+
+OPTIONAL_CONFIG_SUFFIXES: tuple[str, ...] = (
+    "mcp.json",
+    "claude_desktop_config.json",
+)
+
+MANIFEST_CATALOG_THRESHOLD = 3
 
 SCORE_WEIGHTS = {
     "path": 0.35,
@@ -237,10 +382,22 @@ def compute_freshness_score(components: DocDriftComponents) -> int:
     return round(100 * weighted)
 
 
+def _strip_relative_prefix(candidate: str) -> str:
+    if candidate.startswith("./"):
+        return candidate[2:]
+    if candidate.startswith(".\\"):
+        return candidate[2:]
+    return candidate
+
+
 class FreshnessParser:
     def __init__(self, repo_path: str, stack: StackResult) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
+        self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._manifest_basenames = {
+            Path(manifest).name.casefold() for manifest in stack["manifests"]
+        }
 
     def parse(self) -> DocDriftReport:
         if not self._repo_path.is_dir():
@@ -302,16 +459,22 @@ class FreshnessParser:
         docs_dir = self._repo_path / "docs"
         if docs_dir.is_dir():
             for path in sorted(docs_dir.rglob("*.md")):
-                if path.is_file():
-                    key = path.relative_to(self._repo_path).as_posix()
-                    found[key] = self._read_file(path)
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(self._repo_path).as_posix()
+                if self._ignore_matcher.is_ignored(relative, is_dir=False):
+                    continue
+                found[relative] = self._read_file(path)
 
         cursor_rules = self._repo_path / CURSOR_RULES_DIR
         if cursor_rules.is_dir():
             for path in sorted(cursor_rules.rglob("*")):
-                if path.is_file() and path.suffix.casefold() == MDC_SUFFIX:
-                    key = path.relative_to(self._repo_path).as_posix()
-                    found[key] = self._read_file(path)
+                if not path.is_file() or path.suffix.casefold() != MDC_SUFFIX:
+                    continue
+                relative = path.relative_to(self._repo_path).as_posix()
+                if self._ignore_matcher.is_ignored(relative, is_dir=False):
+                    continue
+                found[relative] = self._read_file(path)
 
         return found
 
@@ -326,83 +489,128 @@ class FreshnessParser:
         doc_files: dict[str, str],
         items: list[DocDriftItem],
     ) -> tuple[int, int]:
-        detected_families, detected_displays = self._detected_stack_signals()
+        detected_families = self._detected_stack_signals()
         documented_keywords = self._find_documented_stack_keywords(doc_files)
+        catalog_families = self._catalog_families_by_source(documented_keywords)
 
         conflicts = 0
+        documented_count = 0
+        seen_conflicts: set[tuple[str, str, str]] = set()
+
         for source, keyword, family, display in documented_keywords:
-            if family == "language":
-                if not self._language_documented_matches(display, detected_displays):
-                    conflicts += 1
-                    actual = self._format_detected_for_family(
-                        family, detected_families, detected_displays
-                    )
-                    items.append(
-                        {
-                            "severity": "warning",
-                            "confidence": Confidence.HIGH.value,
-                            "kind": "stack",
-                            "source": source,
-                            "message": (
-                                f'{source} references "{display}" but project '
-                                f"depends on {actual}"
-                            ),
-                        }
-                    )
+            if family in catalog_families.get(source, set()):
                 continue
 
-            family_detected = detected_families.get(family)
-            if family_detected is None:
+            canonical = KEYWORD_TO_DISPLAY.get(keyword, display)
+            detected_in_family = detected_families.get(family, set())
+            if not detected_in_family:
                 continue
-            if family_detected.lower() != display.lower():
-                conflicts += 1
-                items.append(
-                    {
-                        "severity": "warning",
-                        "confidence": Confidence.HIGH.value,
-                        "kind": "stack",
-                        "source": source,
-                        "message": (
-                            f'{source} references "{display}" but project '
-                            f'depends on "{family_detected}"'
-                        ),
-                    }
-                )
 
-        return conflicts, len(documented_keywords)
+            documented_count += 1
+            if self._display_matches_detected(canonical, detected_in_family):
+                continue
 
-    def _detected_stack_signals(self) -> tuple[dict[str, str], set[str]]:
-        families: dict[str, str] = {}
-        displays: set[str] = set()
+            conflict_key = (source, family, canonical.casefold())
+            if conflict_key in seen_conflicts:
+                continue
+            seen_conflicts.add(conflict_key)
+            conflicts += 1
+
+            actual = ", ".join(f'"{name}"' for name in sorted(detected_in_family))
+            items.append(
+                {
+                    "severity": "warning",
+                    "confidence": Confidence.HIGH.value,
+                    "kind": "stack",
+                    "source": source,
+                    "message": (
+                        f'{source} references "{canonical}" but project '
+                        f"depends on {actual}"
+                    ),
+                }
+            )
+
+        return conflicts, documented_count
+
+    def _catalog_families_by_source(
+        self,
+        documented_keywords: list[tuple[str, str, str, str]],
+    ) -> dict[str, set[str]]:
+        rivals_by_source_family: dict[str, dict[str, set[str]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        for source, keyword, family, display in documented_keywords:
+            canonical = KEYWORD_TO_DISPLAY.get(keyword, display)
+            rivals_by_source_family[source][family].add(canonical.casefold())
+
+        catalog: dict[str, set[str]] = {}
+        for source, families in rivals_by_source_family.items():
+            catalog[source] = {
+                family
+                for family, rivals in families.items()
+                if len(rivals) >= 2
+            }
+        return catalog
+
+    def _detected_stack_signals(self) -> dict[str, set[str]]:
+        families: dict[str, set[str]] = defaultdict(set)
 
         for framework in self._stack["frameworks"]:
             display = FRAMEWORK_TO_DISPLAY.get(framework, framework)
-            displays.add(display)
-            for key, (family, mapped_display) in DETECTED_STACK_SIGNALS.items():
+            mapped = False
+            for _signal, (family, mapped_display) in DETECTED_STACK_SIGNALS.items():
                 if mapped_display.lower() == framework.lower():
-                    families[family] = display
+                    families[family].add(mapped_display)
+                    mapped = True
                     break
-            else:
+            if not mapped:
                 name_lower = framework.lower()
-                for keyword, (family, mapped) in DETECTED_STACK_SIGNALS.items():
-                    if keyword in name_lower or name_lower in keyword:
-                        families[family] = display
+                for _signal, (family, mapped_display) in DETECTED_STACK_SIGNALS.items():
+                    if _signal in name_lower or name_lower in _signal:
+                        families[family].add(mapped_display)
                         break
+                else:
+                    families["frontend"].add(display)
 
         deps_lower = " ".join(dep.lower() for dep in self._stack["dependencies"])
         for signal, (family, display) in DETECTED_STACK_SIGNALS.items():
-            if signal in deps_lower and family not in families:
-                families[family] = display
-                displays.add(display)
+            if signal in deps_lower:
+                families[family].add(display)
 
         for language in self._stack["languages"]:
-            display = LANGUAGE_DISPLAY.get(language, language)
-            displays.add(display)
-            family = LANGUAGE_TO_FAMILY.get(language)
-            if family:
-                families.setdefault(family, display)
+            display = LANGUAGE_TO_DISPLAY.get(language, language)
+            families["language"].add(display)
 
-        return families, displays
+        return dict(families)
+
+    def _display_matches_detected(
+        self, documented: str, detected: set[str]
+    ) -> bool:
+        doc_lower = documented.lower()
+        for name in detected:
+            name_lower = name.lower()
+            if doc_lower == name_lower:
+                return True
+            if doc_lower in name_lower or name_lower in doc_lower:
+                return True
+        if doc_lower == "javascript" and any(
+            "javascript" in d.lower() for d in detected
+        ):
+            return True
+        if doc_lower == "typescript" and any(
+            "typescript" in d.lower() for d in detected
+        ):
+            return True
+        if doc_lower == "golang" and "Go" in detected:
+            return True
+        langs = {lang.lower() for lang in self._stack["languages"]}
+        if doc_lower in langs:
+            return True
+        if doc_lower == "javascript" and "javascript/typescript" in langs:
+            return True
+        if doc_lower == "typescript" and "javascript/typescript" in langs:
+            return True
+        return False
 
     def _find_documented_stack_keywords(
         self, doc_files: dict[str, str]
@@ -426,52 +634,20 @@ class FreshnessParser:
                     continue
                 seen.add(key)
                 family = STACK_KEYWORDS[keyword]
-                display = keyword.title() if keyword != "go" else "Go"
-                if keyword == "vue 2":
-                    display = "Vue"
-                elif keyword == "vue 3":
-                    display = "Vue"
-                elif keyword == "nextjs":
-                    display = "Next.js"
-                elif keyword == "golang":
-                    display = "Go"
-                elif keyword == "typescript":
-                    display = "TypeScript"
-                elif keyword == "javascript":
-                    display = "JavaScript"
+                display = KEYWORD_TO_DISPLAY.get(keyword, keyword.title())
                 hits.append((source, keyword, family, display))
 
-        return hits
+        deduped: list[tuple[str, str, str, str]] = []
+        seen_canonical: set[tuple[str, str, str]] = set()
+        for source, keyword, family, display in hits:
+            canonical = KEYWORD_TO_DISPLAY.get(keyword, display).casefold()
+            key = (source, family, canonical)
+            if key in seen_canonical:
+                continue
+            seen_canonical.add(key)
+            deduped.append((source, keyword, family, display))
 
-    def _language_documented_matches(
-        self, documented: str, detected_displays: set[str]
-    ) -> bool:
-        doc_lower = documented.lower()
-        for display in detected_displays:
-            if doc_lower in display.lower() or display.lower() in doc_lower:
-                return True
-        langs = {lang.lower() for lang in self._stack["languages"]}
-        if doc_lower in langs:
-            return True
-        if doc_lower == "javascript" and "javascript/typescript" in langs:
-            return True
-        if doc_lower == "typescript" and "javascript/typescript" in langs:
-            return True
-        if doc_lower == "golang" and "go" in langs:
-            return True
-        return not langs
-
-    def _format_detected_for_family(
-        self,
-        family: str,
-        detected_families: dict[str, str],
-        detected_displays: set[str],
-    ) -> str:
-        if family in detected_families:
-            return f'"{detected_families[family]}"'
-        if detected_displays:
-            return ", ".join(f'"{name}"' for name in sorted(detected_displays))
-        return "a different stack"
+        return deduped
 
     def _detect_path_drift(
         self,
@@ -481,11 +657,23 @@ class FreshnessParser:
         valid = 0
         total = 0
         seen_missing: set[tuple[str, str]] = set()
+        manifest_catalog_sources = self._manifest_catalog_sources(doc_files)
 
         for source, text in doc_files.items():
-            for raw_path in self._extract_paths(text):
+            code_block_spans = self._code_block_spans(text)
+            for raw_path, offset in self._extract_paths_with_offsets(text):
+                if self._offset_in_code_block(offset, code_block_spans):
+                    continue
+                if not self._is_path_like_token(raw_path):
+                    continue
                 normalized = self._normalize_path(raw_path)
                 if normalized is None:
+                    continue
+                if self._skip_optional_path(normalized):
+                    continue
+                if self._skip_manifest_catalog_path(
+                    source, normalized, manifest_catalog_sources
+                ):
                     continue
                 total += 1
                 if self._path_exists(normalized):
@@ -509,14 +697,111 @@ class FreshnessParser:
 
         return valid, total
 
+    def _code_block_spans(self, text: str) -> list[tuple[int, int]]:
+        spans: list[tuple[int, int]] = []
+        fence = re.compile(r"^```", re.MULTILINE)
+        matches = list(fence.finditer(text))
+        for index in range(0, len(matches) - 1, 2):
+            start = matches[index].end()
+            end = matches[index + 1].start()
+            spans.append((start, end))
+        return spans
+
+    def _offset_in_code_block(
+        self, offset: int, spans: list[tuple[int, int]]
+    ) -> bool:
+        return any(start <= offset < end for start, end in spans)
+
+    def _skip_optional_path(self, normalized: str) -> bool:
+        lowered = normalized.replace("\\", "/").casefold()
+        if any(lowered == prefix.casefold() or lowered.startswith(prefix.casefold())
+               for prefix in TOOL_INTERNAL_PREFIXES):
+            return True
+        return any(lowered.endswith(suffix.casefold()) for suffix in OPTIONAL_CONFIG_SUFFIXES)
+
+    def _manifest_catalog_sources(self, doc_files: dict[str, str]) -> set[str]:
+        catalogs: set[str] = set()
+        for source, text in doc_files.items():
+            manifest_refs = 0
+            for raw_path in self._extract_paths(text):
+                if not self._is_path_like_token(raw_path):
+                    continue
+                normalized = self._normalize_path(raw_path)
+                if normalized is None or "/" in normalized or "\\" in normalized:
+                    continue
+                if normalized.casefold() not in KNOWN_FILENAMES:
+                    continue
+                if self._path_exists(normalized):
+                    continue
+                manifest_refs += 1
+            if manifest_refs >= MANIFEST_CATALOG_THRESHOLD:
+                catalogs.add(source)
+        return catalogs
+
+    def _skip_manifest_catalog_path(
+        self,
+        source: str,
+        normalized: str,
+        manifest_catalog_sources: set[str],
+    ) -> bool:
+        if source not in manifest_catalog_sources:
+            return False
+        if "/" in normalized or "\\" in normalized:
+            return False
+        return normalized.casefold() in KNOWN_FILENAMES
+
+    def _is_path_like_token(self, raw: str) -> bool:
+        candidate = raw.strip().strip('"').strip("'")
+        if not candidate:
+            return False
+        if candidate.startswith("-"):
+            return False
+        if " " in candidate:
+            return False
+        if any(char in candidate for char in "(){}>=,"):
+            return False
+        if candidate.startswith("/"):
+            remainder = candidate.lstrip("/")
+            if "/" not in remainder and "." not in remainder:
+                return False
+        normalized = candidate.replace("\\", "/")
+        if "/" in normalized:
+            parts = [part for part in normalized.split("/") if part]
+            if not parts:
+                return False
+            if not any(part.lower() in PATH_ROOT_SEGMENTS for part in parts):
+                suffix = Path(parts[-1]).suffix.lower()
+                if not suffix or suffix not in VALID_PATH_EXTENSIONS:
+                    return False
+            if (
+                len(parts) == 2
+                and "." not in normalized
+                and parts[0].lower() not in PATH_ROOT_SEGMENTS
+                and parts[1].lower() not in PATH_ROOT_SEGMENTS
+            ):
+                return False
+            return True
+        if candidate.startswith("."):
+            if candidate.count(".") >= 2 or len(candidate) > 5:
+                return True
+            return False
+        lowered = candidate.casefold()
+        if lowered in KNOWN_FILENAMES:
+            return True
+        suffix = Path(candidate).suffix.lower()
+        return bool(suffix and suffix in VALID_PATH_EXTENSIONS)
+
     def _extract_paths(self, text: str) -> list[str]:
-        paths: list[str] = []
+        return [raw_path for raw_path, _offset in self._extract_paths_with_offsets(text)]
+
+    def _extract_paths_with_offsets(self, text: str) -> list[tuple[str, int]]:
+        paths: list[tuple[str, int]] = []
         for match in PATH_BACKTICK_RE.finditer(text):
-            paths.append(match.group(1).strip())
+            paths.append((match.group(1).strip(), match.start()))
         for match in PATH_LINK_RE.finditer(text):
-            paths.append(match.group(1).strip())
+            paths.append((match.group(1).strip(), match.start()))
         for match in PATH_SLASH_RE.finditer(text):
-            paths.append(match.group(0).strip())
+            paths.append((match.group(0).strip(), match.start()))
         return paths
 
     def _normalize_path(self, raw: str) -> str | None:
@@ -528,14 +813,15 @@ class FreshnessParser:
         if "://" in candidate:
             return None
         candidate = candidate.split("#", 1)[0].split("?", 1)[0]
-        candidate = candidate.lstrip("./")
+        candidate = _strip_relative_prefix(candidate)
         if not candidate or candidate.endswith((".png", ".jpg", ".gif", ".svg", ".ico")):
+            return None
+        basename = Path(candidate).name.casefold()
+        if basename in GENERATED_ARTIFACTS:
             return None
         if "/" not in candidate and candidate.casefold() in GENERIC_PATH_WORDS:
             return None
-        if candidate.count("/") == 0 and candidate.casefold() in GENERIC_PATH_WORDS:
-            return None
-        parts = [part for part in candidate.split("/") if part and part != "."]
+        parts = [part for part in candidate.replace("\\", "/").split("/") if part and part != "."]
         if not parts:
             return None
         if len(parts) == 1 and parts[0].casefold() in GENERIC_PATH_WORDS:
@@ -544,7 +830,10 @@ class FreshnessParser:
 
     def _path_exists(self, relative: str) -> bool:
         target = self._repo_path / relative
-        return target.exists()
+        if target.exists():
+            return True
+        basename = Path(relative).name.casefold()
+        return basename in self._manifest_basenames
 
     def _detect_env_drift(
         self,
@@ -614,13 +903,12 @@ class FreshnessParser:
     def _parse_documented_env_keys(self, doc_files: dict[str, str]) -> set[str]:
         keys: set[str] = set()
         combined = "\n".join(doc_files.values())
-        for pattern in (ENV_PROCESS_RE, ENV_DOLLAR_RE, ENV_BACKTICK_RE):
+        for pattern in (ENV_PROCESS_RE, ENV_DOLLAR_RE):
             for match in pattern.finditer(combined):
                 keys.add(match.group(1))
         return keys
 
     def _compute_recency_ratio(self, scanned_files: list[str]) -> float:
-        now = time.time()
         doc_mtime = self._latest_doc_mtime(scanned_files)
         code_mtime = self._latest_code_commit_time()
 
@@ -633,7 +921,6 @@ class FreshnessParser:
         age_days = max(0.0, (code_mtime - doc_mtime) / 86400.0)
         if age_days <= grace_days:
             return 1.0
-        # Linear decay from grace to 2x grace
         excess = age_days - grace_days
         decay_window = grace_days
         ratio = max(0.0, 1.0 - (excess / decay_window))

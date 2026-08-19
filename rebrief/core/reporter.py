@@ -709,8 +709,27 @@ class ReportGenerator:
                     f"{entry['file']} ({entry['count']} edits in 30 days)."
                 )
 
+        path_warnings = [
+            item
+            for item in self._doc_drift["items"]
+            if item["severity"] == "warning" and item["kind"] == "path"
+        ]
+        if path_warnings:
+            items.append(
+                f"Review {len(path_warnings)} stale path reference(s) in documentation."
+            )
+
+        seen_stack_messages: set[str] = set()
         for item in self._doc_drift["items"]:
-            if item["severity"] != "warning":
+            if item["severity"] != "warning" or item["kind"] != "stack":
+                continue
+            if item["message"] in seen_stack_messages:
+                continue
+            seen_stack_messages.add(item["message"])
+            items.append(f"Update documentation: {item['message']}")
+
+        for item in self._doc_drift["items"]:
+            if item["severity"] != "warning" or item["kind"] != "env":
                 continue
             items.append(f"Update documentation: {item['message']}")
 

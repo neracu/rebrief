@@ -617,6 +617,71 @@ def test_generate_doc_drift_section(tmp_path: Path) -> None:
     assert "Update documentation:" in report
 
 
+def test_checklist_collapses_path_warnings(tmp_path: Path) -> None:
+    from rebrief.parsers.freshness import DocDriftReport
+
+    stack, rules, git_log, risks = make_report_data()
+    doc_drift: DocDriftReport = {
+        "freshness_score": 50,
+        "freshness_label": "Stale",
+        "scanned_files": ["README.md"],
+        "components": {
+            "path_ratio": 0.1,
+            "stack_ratio": 1.0,
+            "env_ratio": 1.0,
+            "recency_ratio": 1.0,
+        },
+        "items": [
+            {
+                "severity": "warning",
+                "confidence": "HIGH",
+                "kind": "path",
+                "source": "README.md",
+                "message": "README.md references `foo` which no longer exists",
+            },
+            {
+                "severity": "warning",
+                "confidence": "HIGH",
+                "kind": "path",
+                "source": "README.md",
+                "message": "README.md references `bar` which no longer exists",
+            },
+            {
+                "severity": "warning",
+                "confidence": "HIGH",
+                "kind": "path",
+                "source": "README.md",
+                "message": "README.md references `baz` which no longer exists",
+            },
+            {
+                "severity": "warning",
+                "confidence": "HIGH",
+                "kind": "stack",
+                "source": "README.md",
+                "message": (
+                    'README.md references "Vue" but project depends on "React"'
+                ),
+            },
+        ],
+    }
+    generator = ReportGenerator(
+        str(tmp_path / "demo-repo"),
+        stack,
+        rules,
+        git_log,
+        risks,
+        doc_drift=doc_drift,
+    )
+    checklist = generator._checklist_items()
+
+    path_summary = [
+        item for item in checklist if "stale path reference" in item
+    ]
+    assert len(path_summary) == 1
+    assert "3 stale path reference" in path_summary[0]
+    assert sum(1 for item in checklist if item.startswith("Update documentation:")) == 1
+
+
 def test_min_confidence_filters_low_info_items(tmp_path: Path) -> None:
     stack, rules, git_log, risks = make_report_data()
     generator = ReportGenerator(

@@ -5,8 +5,9 @@ import math
 import os
 import re
 from collections import Counter, defaultdict
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Iterator, Sequence, TypedDict
+from typing import TypedDict
 
 from rebrief.core.confidence import Confidence
 from rebrief.core.ignore import IgnoreMatcher
@@ -143,7 +144,15 @@ def _is_namespaced_storage_key(value: str) -> bool:
     return _LOWERCASE_IDENTIFIER_CHARS_RE.match(value) is not None
 
 
-def _classify_secret_value(value: str) -> Confidence | None:
+def _classify_secret_value(
+    value: str,
+    *,
+    entropy_cutoff: float = ENTROPY_THRESHOLD,
+    custom_patterns: Sequence[tuple[re.Pattern[str], Confidence]] = (),
+) -> Confidence | None:
+    for pattern, confidence in custom_patterns:
+        if pattern.search(value):
+            return confidence
     if KNOWN_SECRET_FORMAT_RE.search(value):
         return Confidence.HIGH
     if _is_namespaced_storage_key(value):
@@ -152,7 +161,7 @@ def _classify_secret_value(value: str) -> Confidence | None:
         return None
     if FORBIDDEN_LITERAL_CHARS_RE.search(value):
         return None
-    if _shannon_entropy(value) >= ENTROPY_THRESHOLD:
+    if _shannon_entropy(value) >= entropy_cutoff:
         return Confidence.MEDIUM
     return None
 
@@ -218,10 +227,18 @@ class RisksParser:
         repo_path: str,
         dependencies: list[str] | None = None,
         paths: Sequence[str] | None = None,
+        *,
+        extra_ignore_patterns: Sequence[str] = (),
+        entropy_cutoff: float = ENTROPY_THRESHOLD,
+        custom_patterns: Sequence[tuple[re.Pattern[str], Confidence]] = (),
     ) -> None:
         self._repo_path = Path(repo_path)
         self._dependencies = dependencies
-        self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._ignore_matcher = IgnoreMatcher(
+            repo_path, extra_patterns=extra_ignore_patterns
+        )
+        self._entropy_cutoff = entropy_cutoff
+        self._custom_patterns = tuple(custom_patterns)
         self._paths = (
             {path.replace("\\", "/") for path in paths} if paths is not None else None
         )
@@ -353,13 +370,19 @@ class RisksParser:
     def _line_secret_confidence(
         self, line: str, relative_path: str
     ) -> Confidence | None:
+        entropy_cutoff = getattr(self, "_entropy_cutoff", ENTROPY_THRESHOLD)
+        custom_patterns = getattr(self, "_custom_patterns", ())
         best: Confidence | None = None
         for name, value in _iter_literal_candidates(line):
             if _is_excluded_context(relative_path, name):
                 continue
             if not _name_implies_credential(name):
                 continue
-            confidence = _classify_secret_value(value)
+            confidence = _classify_secret_value(
+                value,
+                entropy_cutoff=entropy_cutoff,
+                custom_patterns=custom_patterns,
+            )
             if confidence is None:
                 continue
             if confidence == Confidence.HIGH:

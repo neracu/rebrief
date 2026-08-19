@@ -162,10 +162,12 @@ def format_savings_footnote(stats: TokenStats) -> str:
 def count_repo_tokens(
     repo_path: str | Path,
     paths: Sequence[str] | None = None,
+    *,
+    extra_ignore_patterns: Sequence[str] = (),
 ) -> TokenStats:
     """Sum tokens of unignored text files. ``brief_tokens`` stays 0 until the report is built."""
     repo = Path(repo_path)
-    matcher = IgnoreMatcher(repo)
+    matcher = IgnoreMatcher(repo, extra_patterns=extra_ignore_patterns)
     total = 0
 
     for file_path in _iter_text_files(repo, matcher, paths):

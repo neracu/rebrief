@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TypedDict
 
@@ -293,13 +294,16 @@ class OwnershipParser:
         skip: bool = False,
         git_root: str | Path | None = None,
         path_prefix: str | None = None,
+        extra_ignore_patterns: Sequence[str] = (),
     ) -> None:
         self._repo_path = Path(repo_path)
         self._git_root = Path(git_root) if git_root is not None else self._repo_path
         self._path_prefix = path_prefix
         self._paths = paths
         self._skip = skip
-        self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._ignore_matcher = IgnoreMatcher(
+            repo_path, extra_patterns=extra_ignore_patterns
+        )
 
     def parse(self) -> OwnershipResult:
         if self._skip:

@@ -4,6 +4,7 @@ import re
 import subprocess
 import time
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -391,10 +392,18 @@ def _strip_relative_prefix(candidate: str) -> str:
 
 
 class FreshnessParser:
-    def __init__(self, repo_path: str, stack: StackResult) -> None:
+    def __init__(
+        self,
+        repo_path: str,
+        stack: StackResult,
+        *,
+        extra_ignore_patterns: Sequence[str] = (),
+    ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
-        self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._ignore_matcher = IgnoreMatcher(
+            repo_path, extra_patterns=extra_ignore_patterns
+        )
         self._manifest_basenames = {
             Path(manifest).name.casefold() for manifest in stack["manifests"]
         }

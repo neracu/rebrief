@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
+from collections.abc import Sequence
 from pathlib import Path
 
 REBRIEFIGNORE_FILENAME = ".rebriefignore"
@@ -98,9 +99,15 @@ def ensure_rebriefignore(repo_path: Path) -> bool:
 
 
 class IgnoreMatcher:
-    def __init__(self, repo_path: str | Path) -> None:
+    def __init__(
+        self,
+        repo_path: str | Path,
+        extra_patterns: Sequence[str] = (),
+    ) -> None:
         self._repo_path = Path(repo_path)
         self._supplemental_patterns = self._load_supplemental_patterns()
+        if extra_patterns:
+            self._supplemental_patterns.extend(extra_patterns)
 
     def _load_supplemental_patterns(self) -> list[str]:
         patterns: list[str] = []

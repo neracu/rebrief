@@ -8,6 +8,13 @@ from rich.console import Console
 from rebrief import __version__
 from rebrief.core.badge import BADGE_LINK, inject_readme_badge
 from rebrief.core.confidence import Confidence, parse_min_confidence
+from rebrief.core.config import (
+    CliOverrides,
+    ConfigError,
+    EffectiveScanSettings,
+    load_config,
+    resolve_effective_settings,
+)
 from rebrief.core.diff import DiffError, DiffScope, resolve_diff_scope
 from rebrief.core.ignore import REBRIEFIGNORE_FILENAME, ensure_rebriefignore
 from rebrief.core.multi import build_system_report, resolve_target_members, run_multi_scan
@@ -54,6 +61,55 @@ def _default_system_output(format: str) -> str:
     return "REBRIEF-SYSTEM.md"
 
 
+def _config_root_for_scan(target: str) -> Path:
+    remote = resolve_remote_target(target)
+    if remote is not None:
+        return Path.cwd()
+    return Path(target).resolve()
+
+
+def _multi_config_root(targets: list[str]) -> Path:
+    for target in targets:
+        if resolve_remote_target(target) is None:
+            path = Path(target).resolve()
+            if path.is_dir():
+                return path
+    return Path.cwd()
+
+
+def _load_effective_settings(
+    config_root: Path,
+    config_path: str | None,
+    *,
+    cli: CliOverrides,
+    system_output: bool = False,
+) -> EffectiveScanSettings:
+    try:
+        config = load_config(config_root, config_path)
+    except ConfigError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise SystemExit(1) from exc
+    effective = resolve_effective_settings(config, cli)
+    if effective.output is not None:
+        return effective
+    default_output = (
+        _default_system_output(effective.format)
+        if system_output
+        else _default_output(effective.format)
+    )
+    return EffectiveScanSettings(
+        format=effective.format,
+        min_confidence=effective.min_confidence,
+        output=default_output,
+        skip_vulnerability_check=effective.skip_vulnerability_check,
+        max_churn_files=effective.max_churn_files,
+        extra_ignore_patterns=effective.extra_ignore_patterns,
+        entropy_cutoff=effective.entropy_cutoff,
+        custom_secret_patterns=effective.custom_secret_patterns,
+        disabled_plugins=effective.disabled_plugins,
+    )
+
+
 def _join_output(root: Path, resolved_output: str) -> Path:
     output = Path(resolved_output)
     if output.is_absolute():
@@ -79,9 +135,19 @@ def _build_generator(
     diff_scope: DiffScope | None = None,
     skip_vulnerability_check: bool = False,
     no_blame: bool = False,
+    scan_settings: EffectiveScanSettings | None = None,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     with scan_ui.scan_progress() as status:
+        if scan_settings is None:
+            return run_scan(
+                repo_path,
+                min_confidence,
+                diff_scope=diff_scope,
+                status=status,
+                skip_vulnerability_check=skip_vulnerability_check,
+                no_blame=no_blame,
+            )
         return run_scan(
             repo_path,
             min_confidence,
@@ -89,6 +155,10 @@ def _build_generator(
             status=status,
             skip_vulnerability_check=skip_vulnerability_check,
             no_blame=no_blame,
+            max_churn_files=scan_settings.max_churn_files,
+            extra_ignore_patterns=scan_settings.extra_ignore_patterns,
+            entropy_cutoff=scan_settings.entropy_cutoff,
+            custom_secret_patterns=scan_settings.custom_secret_patterns,
         )
 
 
@@ -142,6 +212,7 @@ def _run_scan_command(
     prepare_ignore: bool,
     skip_vulnerability_check: bool = False,
     no_blame: bool = False,
+    scan_settings: EffectiveScanSettings | None = None,
 ) -> None:
     if prepare_ignore and _prepare_repo(repo, scan_ui.console):
         scan_ui.print_dim(f"  Created {REBRIEFIGNORE_FILENAME} with default exclusions")
@@ -168,6 +239,7 @@ def _run_scan_command(
         diff_scope=diff_scope,
         skip_vulnerability_check=skip_vulnerability_check,
         no_blame=no_blame,
+        scan_settings=scan_settings,
     )
 
     output_path: Path | None = None
@@ -206,9 +278,8 @@ def _run_scan_command(
     "--format",
     "-f",
     type=click.Choice(["markdown", "json", "xml", "html"], case_sensitive=False),
-    default="markdown",
-    show_default=True,
-    help="Output format.",
+    default=None,
+    help="Output format (default: markdown, or general.format from config).",
 )
 @click.option(
     "--output",
@@ -220,8 +291,7 @@ def _run_scan_command(
     "--min-confidence",
     "-c",
     type=click.Choice(["high", "medium", "low"], case_sensitive=False),
-    default="medium",
-    show_default=True,
+    default=None,
     help="Minimum confidence level for risks included in the report.",
 )
 @click.option(
@@ -258,7 +328,8 @@ def _run_scan_command(
 @click.option(
     "--skip-vulnerability-check",
     is_flag=True,
-    default=False,
+    flag_value=True,
+    default=None,
     help="Skip remote OSV API calls (air-gapped / faster local scans).",
 )
 @click.option(
@@ -267,27 +338,44 @@ def _run_scan_command(
     default=False,
     help="Skip git blame ownership analysis on large repositories.",
 )
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Path to rebrief.toml (overrides auto-discovery).",
+)
 def scan(
     target: str,
-    format: str,
+    format: str | None,
     output: str | None,
-    min_confidence: str,
+    min_confidence: str | None,
     inject_badge: bool,
     diff_ref: str | None,
     plain: bool,
     yes: bool,
-    skip_vulnerability_check: bool,
+    skip_vulnerability_check: bool | None,
     no_blame: bool,
+    config_path: str | None,
 ) -> None:
+    cli_overrides = CliOverrides(
+        format=format.lower() if format is not None else None,
+        min_confidence=min_confidence.lower() if min_confidence is not None else None,
+        output=output,
+        skip_vulnerability_check=skip_vulnerability_check,
+    )
+    config_root = _config_root_for_scan(target)
+    effective = _load_effective_settings(config_root, config_path, cli=cli_overrides)
+
     settings = ScanSettings(
         target=target,
-        format=format.lower(),
-        output=output or _default_output(format),
-        min_confidence=min_confidence.lower(),
+        format=effective.format,
+        output=effective.output or _default_output(effective.format),
+        min_confidence=effective.min_confidence,
         diff_ref=diff_ref,
         inject_badge=inject_badge,
         output_custom=output is not None,
-        skip_vulnerability_check=skip_vulnerability_check,
+        skip_vulnerability_check=effective.skip_vulnerability_check,
         no_blame=no_blame,
     )
     write_to_stdout = settings.output == "-"
@@ -338,6 +426,7 @@ def scan(
                     prepare_ignore=False,
                     skip_vulnerability_check=skip_vulnerability_check,
                     no_blame=no_blame,
+                    scan_settings=effective,
                 )
         except RemoteCloneError as exc:
             scan_ui.print_error(str(exc))
@@ -363,6 +452,7 @@ def scan(
         prepare_ignore=True,
         skip_vulnerability_check=skip_vulnerability_check,
         no_blame=no_blame,
+        scan_settings=effective,
     )
 
 
@@ -372,9 +462,8 @@ def scan(
     "--format",
     "-f",
     type=click.Choice(["markdown", "json", "xml"], case_sensitive=False),
-    default="markdown",
-    show_default=True,
-    help="Output format.",
+    default=None,
+    help="Output format (default: markdown, or general.format from config).",
 )
 @click.option(
     "--output",
@@ -389,8 +478,7 @@ def scan(
     "--min-confidence",
     "-c",
     type=click.Choice(["high", "medium", "low"], case_sensitive=False),
-    default="medium",
-    show_default=True,
+    default=None,
     help="Minimum confidence level for risks included in the report.",
 )
 @click.option(
@@ -404,7 +492,8 @@ def scan(
 @click.option(
     "--skip-vulnerability-check",
     is_flag=True,
-    default=False,
+    flag_value=True,
+    default=None,
     help="Skip remote OSV API calls (air-gapped / faster local scans).",
 )
 @click.option(
@@ -413,24 +502,44 @@ def scan(
     default=False,
     help="Skip git blame ownership analysis on large repositories.",
 )
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Path to rebrief.toml (overrides auto-discovery).",
+)
 def multi(
     targets: tuple[str, ...],
-    format: str,
+    format: str | None,
     output: str | None,
-    min_confidence: str,
+    min_confidence: str | None,
     plain: bool,
-    skip_vulnerability_check: bool,
+    skip_vulnerability_check: bool | None,
     no_blame: bool,
+    config_path: str | None,
 ) -> None:
     """Scan multiple repositories or monorepo workspaces into one system briefing."""
-    format = format.lower()
-    resolved_output = output or _default_system_output(format)
+    target_list = list(targets) if targets else ["."]
+    cli_overrides = CliOverrides(
+        format=format.lower() if format is not None else None,
+        min_confidence=min_confidence.lower() if min_confidence is not None else None,
+        output=output,
+        skip_vulnerability_check=skip_vulnerability_check,
+    )
+    effective = _load_effective_settings(
+        _multi_config_root(target_list),
+        config_path,
+        cli=cli_overrides,
+        system_output=True,
+    )
+    format = effective.format
+    resolved_output = effective.output or _default_system_output(format)
     write_to_stdout = resolved_output == "-"
     ui_file = sys.stderr if write_to_stdout else sys.stdout
     scan_ui = ScanUI.create(plain=plain, file=ui_file)
     scan_ui.print_banner()
 
-    target_list = list(targets) if targets else ["."]
     scan_ui.print_scan_header(
         path=", ".join(target_list),
         format=format,
@@ -442,10 +551,14 @@ def multi(
             members = resolve_target_members(target_list, stack, scan_ui=scan_ui)
             services = run_multi_scan(
                 members,
-                parse_min_confidence(min_confidence),
+                parse_min_confidence(effective.min_confidence),
                 scan_ui=scan_ui,
-                skip_vulnerability_check=skip_vulnerability_check,
+                skip_vulnerability_check=effective.skip_vulnerability_check,
                 no_blame=no_blame,
+                max_churn_files=effective.max_churn_files,
+                extra_ignore_patterns=effective.extra_ignore_patterns,
+                entropy_cutoff=effective.entropy_cutoff,
+                custom_secret_patterns=effective.custom_secret_patterns,
             )
     except RemoteCloneError as exc:
         scan_ui.print_error(str(exc))

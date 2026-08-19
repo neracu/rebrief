@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rebrief.core.confidence import Confidence
 from rebrief.core.remote import (
@@ -13,6 +14,9 @@ from rebrief.core.scan import run_scan
 from rebrief.core.system_report import ScannedService, SystemReportGenerator
 from rebrief.core.workspace import WorkspaceMember, expand_workspace_members
 from rebrief.ui import ScanUI
+
+if TYPE_CHECKING:
+    from rebrief.core.config import SecretPatternConfig
 
 
 def _resolve_local_target(target: str) -> Path:
@@ -79,6 +83,10 @@ def run_multi_scan(
     scan_ui: ScanUI,
     skip_vulnerability_check: bool = False,
     no_blame: bool = False,
+    max_churn_files: int | None = None,
+    extra_ignore_patterns: tuple[str, ...] | None = None,
+    entropy_cutoff: float | None = None,
+    custom_secret_patterns: tuple[SecretPatternConfig, ...] | None = None,
 ) -> list[ScannedService]:
     services: list[ScannedService] = []
     total = len(members)
@@ -97,6 +105,10 @@ def run_multi_scan(
                 no_blame=no_blame,
                 git_root=member["git_root"],
                 path_prefix=member["path_prefix"],
+                max_churn_files=max_churn_files,
+                extra_ignore_patterns=extra_ignore_patterns,
+                entropy_cutoff=entropy_cutoff,
+                custom_secret_patterns=custom_secret_patterns,
             )
         services.append(
             ScannedService(

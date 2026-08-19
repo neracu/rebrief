@@ -87,9 +87,13 @@ class StackParser:
         self,
         repo_path: str,
         paths: Sequence[str] | None = None,
+        *,
+        extra_ignore_patterns: Sequence[str] = (),
     ) -> None:
         self._repo_path = Path(repo_path)
-        self._ignore_matcher = IgnoreMatcher(repo_path)
+        self._ignore_matcher = IgnoreMatcher(
+            repo_path, extra_patterns=extra_ignore_patterns
+        )
         self._paths = (
             [path.replace("\\", "/") for path in paths] if paths is not None else None
         )

@@ -111,6 +111,18 @@ pip install "rebrief[tokens]"   # optional: accurate cl100k_base token counts
 pip install "rebrief[chat]"     # optional: rebrief chat (BYO LLM API key)
 ```
 
+### VS Code extension
+
+Install the CLI first, then add the **Rebrief** extension from the Marketplace (or load `rebrief-vscode/` in Extension Development Host). It adds a `⚡ Rebrief` status bar action, an activity-bar sidebar, folder context-menu scans, and an in-editor HTML dashboard with one-click AI prompt copy.
+
+```bash
+cd rebrief-vscode
+npm install
+npm run compile
+```
+
+Settings: `rebrief.executablePath`, `rebrief.format`, `rebrief.minConfidence`, `rebrief.autoScanOnSave`.
+
 ```bash
 rebrief scan .                      # TTY: settings panel, then start
 rebrief scan . -y                   # skip the panel and scan immediately

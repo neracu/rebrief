@@ -39,7 +39,7 @@ htmlcov/
 .cursor/
 .cursor/commands/
 .idea/
-.vscode/
+/.vscode/
 *.swp
 *.swo
 .cursorrules
@@ -63,3 +63,8 @@ HANDOFF.md
 web/node_modules/
 web/.next/
 web/out/
+
+# VS Code extension
+rebrief-vscode/node_modules/
+rebrief-vscode/out/
+*.vsix

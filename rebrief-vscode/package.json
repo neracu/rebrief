@@ -1,0 +1,135 @@
+{
+  "name": "rebrief",
+  "displayName": "Rebrief",
+  "description": "Scan repositories and generate AI-ready briefing dashboards from the rebrief CLI.",
+  "version": "0.3.0",
+  "publisher": "neracu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neracu/rebrief.git",
+    "directory": "rebrief-vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "rebrief",
+    "ai",
+    "context",
+    "scan",
+    "cursor",
+    "claude"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rebrief.scanWorkspace",
+        "title": "Rebrief: Scan Workspace",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "rebrief.scanFolder",
+        "title": "Rebrief this folder",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "rebrief.copyBriefing",
+        "title": "Rebrief: Copy Briefing for Cursor / Claude",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "rebrief.openDashboard",
+        "title": "Rebrief: Open Interactive Dashboard",
+        "icon": "$(dashboard)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rebrief",
+          "title": "Rebrief",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "rebrief": [
+        {
+          "type": "webview",
+          "id": "rebrief.sidebar",
+          "name": "Rebrief this repo"
+        }
+      ]
+    },
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "rebrief.scanFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@50"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "rebrief.scanFolder",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Rebrief",
+      "properties": {
+        "rebrief.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the rebrief executable. Leave empty to auto-detect from PATH or python -m rebrief."
+        },
+        "rebrief.format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "json",
+            "html"
+          ],
+          "default": "markdown",
+          "description": "Default report format written to the workspace after a scan."
+        },
+        "rebrief.minConfidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "default": "medium",
+          "description": "Minimum confidence threshold for risks included in the report."
+        },
+        "rebrief.autoScanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically refresh the briefing when manifest or config files are saved."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.3.2",
+    "typescript": "^5.8.3"
+  }
+}

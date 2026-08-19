@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.core.system_report import (
     ScannedService,
     SystemReportGenerator,
@@ -60,7 +60,7 @@ def _service(
         _stack(frameworks=frameworks, packages=packages),
         {},
         _git_log(),
-        _risks(),
+        collected_items_from_risk_report(_risks()),
     )
     return ScannedService(name=name, source=str(repo), generator=generator)
 
@@ -128,7 +128,7 @@ def test_unified_risks_prefixed(tmp_path: Path) -> None:
         _stack(frameworks=["FastAPI"]),
         {},
         _git_log(),
-        risks,
+        collected_items_from_risk_report(risks),
     )
     services = [ScannedService(name="api", source=str(repo), generator=generator)]
     report = SystemReportGenerator(services)

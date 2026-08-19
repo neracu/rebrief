@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from rebrief.cli import main
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.ownership import (
     OwnershipParser,
     classify_expertise,
@@ -235,7 +235,7 @@ def test_reporter_ownership_section(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         ownership=ownership,
     )
     report = generator.generate()
@@ -257,7 +257,7 @@ def test_reporter_no_blame_note(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         no_blame=True,
     )
     report = generator.generate()

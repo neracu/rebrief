@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 
 from rebrief.core.confidence import Confidence
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.git_log import GitLogResult
-from rebrief.parsers.risks import RisksParser
+from rebrief.parsers.risks import RisksParser, line_secret_confidence
 from rebrief.parsers.stack import StackResult
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "secrets"
@@ -155,8 +155,7 @@ def test_secret_pattern_detection(
     should_detect: bool,
     label: str,
 ) -> None:
-    parser = RisksParser.__new__(RisksParser)
-    confidence = parser._line_secret_confidence(source_line, relative_path)
+    confidence = line_secret_confidence(source_line, relative_path)
 
     assert (confidence is not None) is should_detect, label
 
@@ -181,7 +180,7 @@ def test_secret_findings_in_critical_section() -> None:
         stack,
         {},
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
     )
 
     report = generator.generate()

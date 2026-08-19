@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from rebrief.core.confidence import Confidence
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RisksParser, is_test_or_fixture_path
 from rebrief.parsers.stack import StackResult
@@ -38,7 +38,7 @@ def _report_for(
         _empty_stack(),
         {},
         _empty_git(),
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=min_confidence,
     )
     return generator.generate(), generator.to_dict()
@@ -211,14 +211,14 @@ def test_report_title_resolves_dot_path(tmp_path: Path, monkeypatch: pytest.Monk
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(".", stack, {}, git_log, risks)
+    generator = ReportGenerator(".", stack, {}, git_log, collected_items_from_risk_report(risks))
 
     assert "# REBRIEF REPORT: my-app" in generator.generate()
 
 
 def test_overview_uses_project_context_files_label(tmp_path: Path) -> None:
     stack, rules, git_log, risks = make_report_data()
-    generator = ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, collected_items_from_risk_report(risks))
     report = generator.generate()
 
     assert "Project context files found: 2 (.cursorrules, CLAUDE.md)." in report
@@ -232,7 +232,7 @@ def test_this_repo_fixture_secrets_are_warnings_not_critical() -> None:
         _empty_stack(),
         {},
         _empty_git(),
-        risks,
+        collected_items_from_risk_report(risks),
     )
     payload = generator.to_dict()
     report = generator.generate()

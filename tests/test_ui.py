@@ -7,7 +7,7 @@ import pytest
 from rich.console import Console
 
 from rebrief.core.confidence import Confidence
-from rebrief.core.reporter import ReportGenerator, ReportPayload
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report, ReportPayload
 from rebrief.ui import (
     BANNER_ART,
     BANNER_ART_ASCII,
@@ -64,7 +64,7 @@ def _payload(tmp_path: Path, min_confidence: Confidence = Confidence.LOW) -> Rep
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=min_confidence,
     )
     return generator.to_dict()

@@ -87,6 +87,8 @@ def run_multi_scan(
     extra_ignore_patterns: tuple[str, ...] | None = None,
     entropy_cutoff: float | None = None,
     custom_secret_patterns: tuple[SecretPatternConfig, ...] | None = None,
+    enable_plugins: bool = True,
+    disabled_plugins: tuple[str, ...] = (),
 ) -> list[ScannedService]:
     services: list[ScannedService] = []
     total = len(members)
@@ -109,6 +111,8 @@ def run_multi_scan(
                 extra_ignore_patterns=extra_ignore_patterns,
                 entropy_cutoff=entropy_cutoff,
                 custom_secret_patterns=custom_secret_patterns,
+                enable_plugins=enable_plugins,
+                disabled_plugins=disabled_plugins,
             )
         services.append(
             ScannedService(

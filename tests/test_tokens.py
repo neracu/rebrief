@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from rebrief.core.confidence import Confidence
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.core.tokens import (
     CHAR_RATIO,
     ENCODING_NAME,
@@ -105,7 +105,7 @@ def test_reporter_includes_token_stats_and_footnote(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.MEDIUM,
         raw_token_stats=raw,
     )

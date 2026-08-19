@@ -7,7 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from rebrief.cli import main
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.core.vulnerabilities import (
     SKIP_MESSAGE,
     VulnerabilityReport,
@@ -217,7 +217,7 @@ def test_report_generator_includes_vulnerability_section() -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         vulnerabilities=vulnerabilities,
     )
 
@@ -244,7 +244,7 @@ def test_report_generator_offline_notice_in_info_tier() -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         vulnerabilities=vulnerabilities,
     )
     payload = generator.to_dict()

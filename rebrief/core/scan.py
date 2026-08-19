@@ -13,24 +13,16 @@ from rebrief.core.vulnerabilities import check_vulnerabilities
 from rebrief.parsers.freshness import FreshnessParser
 from rebrief.parsers.git_log import GitLogParser
 from rebrief.parsers.ownership import OwnershipParser
-from rebrief.parsers.risks import ENTROPY_THRESHOLD, RisksParser
+from rebrief.plugins.builtin._helpers import ENTROPY_THRESHOLD
+from rebrief.plugins.context import build_scan_context
+from rebrief.plugins.loader import resolve_plugins, run_risk_plugins
 from rebrief.parsers.rules import RulesParser
 from rebrief.parsers.stack import StackParser
 
 if TYPE_CHECKING:
-    import re
-
     from rebrief.core.config import SecretPatternConfig
 
 StatusFactory = Callable[[str], AbstractContextManager[object]]
-
-
-def _pattern_pairs(
-    custom_secret_patterns: tuple[SecretPatternConfig, ...] | None,
-) -> tuple[tuple[re.Pattern[str], Confidence], ...]:
-    if not custom_secret_patterns:
-        return ()
-    return tuple((pattern.regex, pattern.confidence) for pattern in custom_secret_patterns)
 
 
 def run_scan(
@@ -47,6 +39,8 @@ def run_scan(
     no_blame: bool = False,
     git_root: str | Path | None = None,
     path_prefix: str | None = None,
+    enable_plugins: bool = True,
+    disabled_plugins: tuple[str, ...] = (),
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     step = status or (lambda _message: nullcontext())
@@ -58,7 +52,6 @@ def run_scan(
     resolved_entropy_cutoff = (
         entropy_cutoff if entropy_cutoff is not None else ENTROPY_THRESHOLD
     )
-    secret_patterns = _pattern_pairs(custom_secret_patterns)
 
     with step("[1/4] Parsing repository manifests & tech stack..."):
         stack = StackParser(
@@ -93,14 +86,23 @@ def run_scan(
         ).parse()
 
     with step("[3/4] Running risk detectors & vulnerability checks..."):
-        risks = RisksParser(
+        context = build_scan_context(
             repo,
-            dependencies=stack["dependencies"],
+            stack=stack,
+            git_log=git_log,
+            ownership=ownership,
             paths=paths,
-            extra_ignore_patterns=ignore_patterns,
             entropy_cutoff=resolved_entropy_cutoff,
-            custom_patterns=secret_patterns,
-        ).parse()
+            extra_ignore_patterns=ignore_patterns,
+            custom_secret_patterns=custom_secret_patterns,
+            min_confidence=min_confidence.value.lower(),
+        )
+        plugins = resolve_plugins(
+            repo,
+            enable_external=enable_plugins,
+            disabled=disabled_plugins,
+        )
+        risk_items = run_risk_plugins(plugins, context)
         vulnerabilities = check_vulnerabilities(
             stack["packages"],
             skip=skip_vulnerability_check,
@@ -115,7 +117,7 @@ def run_scan(
             stack,
             rules,
             git_log,
-            risks,
+            risk_items,
             min_confidence=min_confidence,
             diff_scope=diff_scope,
             raw_token_stats=raw_token_stats,

@@ -4,7 +4,7 @@ from xml.etree import ElementTree as ET
 
 from rebrief import __version__
 from rebrief.core.confidence import Confidence
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.git_log import POINT_ZERO_MESSAGE, GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
@@ -58,7 +58,7 @@ def make_report_data() -> tuple[
 
 def _make_generator(tmp_path: Path) -> ReportGenerator:
     stack, rules, git_log, risks = make_report_data()
-    return ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, risks)
+    return ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, collected_items_from_risk_report(risks))
 
 
 def test_generate_includes_all_sections(tmp_path: Path) -> None:
@@ -80,7 +80,7 @@ def test_generate_critical_warning_info(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.LOW,
     )
     report = generator.generate()
@@ -164,7 +164,7 @@ def test_generate_empty_repo_overview(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "empty-repo"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "empty-repo"), stack, {}, git_log, collected_items_from_risk_report(risks))
 
     report = generator.generate()
 
@@ -178,7 +178,7 @@ def test_generate_point_zero_git_timeline(tmp_path: Path) -> None:
         "top_modified_files": [],
         "status_message": POINT_ZERO_MESSAGE,
     }
-    generator = ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "demo-repo"), stack, rules, git_log, collected_items_from_risk_report(risks))
 
     report = generator.generate()
 
@@ -210,7 +210,7 @@ def test_generate_monorepo_manifests(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "monorepo"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "monorepo"), stack, {}, git_log, collected_items_from_risk_report(risks))
 
     report = generator.generate()
 
@@ -285,7 +285,7 @@ def test_incremental_report_metadata(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         diff_scope=scope,
     )
 
@@ -355,7 +355,7 @@ def test_to_dict_empty_risks(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "clean-repo"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "clean-repo"), stack, {}, git_log, collected_items_from_risk_report(risks))
     payload = generator.to_dict()
 
     assert payload["risk_map"] == {
@@ -389,7 +389,7 @@ def test_manifest_warning_in_risk_map(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "warn-repo"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "warn-repo"), stack, {}, git_log, collected_items_from_risk_report(risks))
     payload = generator.to_dict()
 
     assert payload["summary"]["risks_count"] == 1
@@ -432,7 +432,7 @@ def test_tech_stack_frameworks_in_json_output(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "multi-stack"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "multi-stack"), stack, {}, git_log, collected_items_from_risk_report(risks))
     payload = generator.to_dict()
 
     assert payload["tech_stack"]["frameworks"] == frameworks
@@ -515,7 +515,7 @@ def test_generate_xml_empty_containers(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "empty-xml"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "empty-xml"), stack, {}, git_log, collected_items_from_risk_report(risks))
     root = ET.fromstring(generator.generate_xml())
 
     assert root.find("tech_stack/frameworks") is not None
@@ -547,7 +547,7 @@ def test_generate_xml_escapes_special_characters(tmp_path: Path) -> None:
         "dependency_conflicts": [],
     }
     xml_text = ReportGenerator(
-        str(tmp_path / "escape-repo"), stack, {}, git_log, risks
+        str(tmp_path / "escape-repo"), stack, {}, git_log, collected_items_from_risk_report(risks)
     ).generate_xml()
 
     assert "&amp;" in xml_text
@@ -603,7 +603,7 @@ def test_generate_doc_drift_section(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         doc_drift=doc_drift,
     )
     report = generator.generate()
@@ -669,7 +669,7 @@ def test_checklist_collapses_path_warnings(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         doc_drift=doc_drift,
     )
     checklist = generator._checklist_items()
@@ -689,7 +689,7 @@ def test_min_confidence_filters_low_info_items(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.MEDIUM,
     )
 
@@ -707,7 +707,7 @@ def test_min_confidence_high_excludes_medium_items(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.HIGH,
     )
     payload = generator.to_dict()

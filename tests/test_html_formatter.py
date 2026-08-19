@@ -3,7 +3,7 @@ from pathlib import Path
 
 from rebrief import __version__
 from rebrief.core.confidence import Confidence
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.stack import StackResult
@@ -103,7 +103,7 @@ def test_generate_html_escapes_special_characters(tmp_path: Path) -> None:
         "dependency_conflicts": [],
     }
     html = ReportGenerator(
-        str(tmp_path / "escape-repo"), stack, {}, git_log, risks
+        str(tmp_path / "escape-repo"), stack, {}, git_log, collected_items_from_risk_report(risks)
     ).generate_html()
 
     assert "Foo<Bar>" not in html
@@ -136,7 +136,7 @@ def test_generate_html_includes_info_when_confidence_low(tmp_path: Path) -> None
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.LOW,
     ).generate_html()
 

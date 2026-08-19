@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from rebrief.core.ignore import IgnoreMatcher
-from rebrief.parsers.risks import is_test_or_fixture_path
+from rebrief.plugins.builtin._helpers import is_test_or_fixture_path
 
 MAX_BLAME_FILES = 250
 MAX_FILE_BYTES = 1024 * 1024

@@ -25,9 +25,10 @@ from rebrief.parsers.ownership import (
     OwnershipResult,
     format_ownership_table,
 )
-from rebrief.parsers.risks import RiskReport, is_test_or_fixture_path
+from rebrief.parsers.risks import RiskReport
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
+from rebrief.plugins.builtin._helpers import secret_finding_to_risk_item
 
 Severity = Literal["critical", "warning", "info"]
 ScanMode = Literal["full", "incremental"]
@@ -107,6 +108,46 @@ class _CollectedRiskItem(TypedDict):
     confidence: str
 
 
+def collected_items_from_risk_report(risks: RiskReport) -> list[_CollectedRiskItem]:
+    items: list[_CollectedRiskItem] = []
+
+    for entry in risks["secrets"]:
+        items.append(secret_finding_to_risk_item(entry))
+
+    if risks["missing_tests"]:
+        items.append(
+            {
+                "severity": "warning",
+                "message": "Missing tests directory (`tests/`, `test/`, or `__tests__/`).",
+                "confidence": Confidence.HIGH.value,
+            }
+        )
+
+    for conflict in risks["dependency_conflicts"]:
+        versions = ", ".join(conflict["versions"])
+        items.append(
+            {
+                "severity": "warning",
+                "message": (
+                    f"Duplicate dependency `{conflict['package']}` "
+                    f"with conflicting versions: {versions}."
+                ),
+                "confidence": Confidence.MEDIUM.value,
+            }
+        )
+
+    for entry in risks["markers"]:
+        items.append(
+            {
+                "severity": "info",
+                "message": f"{entry['marker']} in {entry['file']}:{entry['line']}",
+                "confidence": entry["confidence"],
+            }
+        )
+
+    return items
+
+
 def _xml_text(parent: ET.Element, tag: str, value: object) -> ET.Element:
     child = ET.SubElement(parent, tag)
     child.text = str(value)
@@ -127,7 +168,7 @@ class ReportGenerator:
         stack: StackResult,
         rules: dict[str, RuleFileEntry],
         git_log: GitLogResult,
-        risks: RiskReport,
+        risk_items: list[_CollectedRiskItem],
         min_confidence: Confidence = Confidence.MEDIUM,
         diff_scope: DiffScope | None = None,
         raw_token_stats: TokenStats | None = None,
@@ -141,7 +182,7 @@ class ReportGenerator:
         self._stack = stack
         self._rules = rules
         self._git_log = git_log
-        self._risks = risks
+        self._risk_items = list(risk_items)
         self._min_confidence = min_confidence
         self._diff_scope = diff_scope
         self._raw_token_stats = raw_token_stats or empty_token_stats()
@@ -354,52 +395,7 @@ class ReportGenerator:
         }
 
     def _collect_risk_items(self) -> list[_CollectedRiskItem]:
-        items: list[_CollectedRiskItem] = []
-
-        for entry in self._risks["secrets"]:
-            if is_test_or_fixture_path(entry["file"]):
-                items.append(
-                    {
-                        "severity": "warning",
-                        "message": (
-                            "Hard-coded secret-like value in test/example file "
-                            f"{entry['file']}:{entry['line']}"
-                        ),
-                        "confidence": entry["confidence"],
-                    }
-                )
-            else:
-                items.append(
-                    {
-                        "severity": "critical",
-                        "message": (
-                            f"Hard-coded secret in {entry['file']}:{entry['line']}"
-                        ),
-                        "confidence": entry["confidence"],
-                    }
-                )
-
-        if self._risks["missing_tests"]:
-            items.append(
-                {
-                    "severity": "warning",
-                    "message": "Missing tests directory (`tests/`, `test/`, or `__tests__/`).",
-                    "confidence": Confidence.HIGH.value,
-                }
-            )
-
-        for conflict in self._risks["dependency_conflicts"]:
-            versions = ", ".join(conflict["versions"])
-            items.append(
-                {
-                    "severity": "warning",
-                    "message": (
-                        f"Duplicate dependency `{conflict['package']}` "
-                        f"with conflicting versions: {versions}."
-                    ),
-                    "confidence": Confidence.MEDIUM.value,
-                }
-            )
+        items: list[_CollectedRiskItem] = list(self._risk_items)
 
         for warning in self._stack["manifest_warnings"]:
             items.append(
@@ -407,15 +403,6 @@ class ReportGenerator:
                     "severity": "warning",
                     "message": warning,
                     "confidence": Confidence.HIGH.value,
-                }
-            )
-
-        for entry in self._risks["markers"]:
-            items.append(
-                {
-                    "severity": "info",
-                    "message": f"{entry['marker']} in {entry['file']}:{entry['line']}",
-                    "confidence": entry["confidence"],
                 }
             )
 
@@ -659,31 +646,37 @@ class ReportGenerator:
     def _checklist_items(self) -> list[str]:
         items: list[str] = []
 
-        for secret in self._risks["secrets"]:
-            if not self._is_filtered_risk(secret["confidence"]):
-                continue
-            if is_test_or_fixture_path(secret["file"]):
-                items.append(
-                    "Confirm the secret-like value in "
-                    f"{secret['file']} (line {secret['line']}) "
-                    "is a test fixture, not a live credential."
-                )
-            else:
+        for risk in self._filtered_risk_items():
+            message = risk["message"]
+            if message.startswith("Hard-coded secret in "):
+                location = message.removeprefix("Hard-coded secret in ")
+                file_part, _, line_part = location.partition(":")
                 items.append(
                     "Review and rotate hard-coded credentials in "
-                    f"{secret['file']} (line {secret['line']})."
+                    f"{file_part} (line {line_part})."
                 )
-
-        if self._risks["missing_tests"] and self._is_filtered_risk(Confidence.HIGH.value):
-            items.append("Add a `tests/` directory and cover critical paths.")
-
-        for conflict in self._risks["dependency_conflicts"]:
-            if not self._is_filtered_risk(Confidence.MEDIUM.value):
                 continue
-            versions = ", ".join(conflict["versions"])
-            items.append(
-                f"Resolve version conflict for `{conflict['package']}`: {versions}."
-            )
+            if message.startswith("Hard-coded secret-like value in test/example file "):
+                location = message.removeprefix(
+                    "Hard-coded secret-like value in test/example file "
+                )
+                file_part, _, line_part = location.partition(":")
+                items.append(
+                    "Confirm the secret-like value in "
+                    f"{file_part} (line {line_part}) "
+                    "is a test fixture, not a live credential."
+                )
+                continue
+            if "Missing tests directory" in message:
+                items.append("Add a `tests/` directory and cover critical paths.")
+                continue
+            if message.startswith("Duplicate dependency `"):
+                package_end = message.find("`", len("Duplicate dependency `"))
+                package = message[len("Duplicate dependency `") : package_end]
+                versions_text = message.split("conflicting versions: ", 1)[-1].rstrip(".")
+                items.append(
+                    f"Resolve version conflict for `{package}`: {versions_text}."
+                )
 
         for finding in self._vulnerabilities["findings"]:
             if not self._is_filtered_risk(finding["confidence"]):

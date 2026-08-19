@@ -25,6 +25,7 @@ from rebrief.core.remote import (
 )
 from rebrief.core.reporter import ReportGenerator
 from rebrief.core.scan import run_scan
+from rebrief.plugins.loader import format_plugin_list, list_plugin_descriptors
 from rebrief.ui import ScanSettings, ScanUI, make_console
 
 
@@ -136,6 +137,7 @@ def _build_generator(
     skip_vulnerability_check: bool = False,
     no_blame: bool = False,
     scan_settings: EffectiveScanSettings | None = None,
+    enable_plugins: bool = True,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     with scan_ui.scan_progress() as status:
@@ -147,6 +149,7 @@ def _build_generator(
                 status=status,
                 skip_vulnerability_check=skip_vulnerability_check,
                 no_blame=no_blame,
+                enable_plugins=enable_plugins,
             )
         return run_scan(
             repo_path,
@@ -159,6 +162,8 @@ def _build_generator(
             extra_ignore_patterns=scan_settings.extra_ignore_patterns,
             entropy_cutoff=scan_settings.entropy_cutoff,
             custom_secret_patterns=scan_settings.custom_secret_patterns,
+            enable_plugins=enable_plugins,
+            disabled_plugins=scan_settings.disabled_plugins,
         )
 
 
@@ -197,6 +202,27 @@ def init(repo_path: str) -> None:
     )
 
 
+def _print_plugin_list(
+    repo: Path,
+    *,
+    enable_plugins: bool,
+    disabled_plugins: tuple[str, ...],
+) -> None:
+    builtin, external = list_plugin_descriptors(
+        repo,
+        enable_external=enable_plugins,
+        disabled=disabled_plugins,
+    )
+    click.echo(
+        format_plugin_list(
+            builtin,
+            external,
+            external_disabled=not enable_plugins,
+        ),
+        err=True,
+    )
+
+
 def _run_scan_command(
     *,
     repo: Path,
@@ -213,7 +239,20 @@ def _run_scan_command(
     skip_vulnerability_check: bool = False,
     no_blame: bool = False,
     scan_settings: EffectiveScanSettings | None = None,
+    enable_plugins: bool = True,
+    list_plugins: bool = False,
 ) -> None:
+    if list_plugins:
+        disabled_plugins = (
+            scan_settings.disabled_plugins if scan_settings is not None else ()
+        )
+        _print_plugin_list(
+            repo,
+            enable_plugins=enable_plugins,
+            disabled_plugins=disabled_plugins,
+        )
+        return
+
     if prepare_ignore and _prepare_repo(repo, scan_ui.console):
         scan_ui.print_dim(f"  Created {REBRIEFIGNORE_FILENAME} with default exclusions")
 
@@ -240,6 +279,7 @@ def _run_scan_command(
         skip_vulnerability_check=skip_vulnerability_check,
         no_blame=no_blame,
         scan_settings=scan_settings,
+        enable_plugins=enable_plugins,
     )
 
     output_path: Path | None = None
@@ -345,6 +385,18 @@ def _run_scan_command(
     default=None,
     help="Path to rebrief.toml (overrides auto-discovery).",
 )
+@click.option(
+    "--no-plugins",
+    is_flag=True,
+    default=False,
+    help="Disable third-party plugins (local and pip entry points).",
+)
+@click.option(
+    "--list-plugins",
+    is_flag=True,
+    default=False,
+    help="List active built-in and external plugins, then exit.",
+)
 def scan(
     target: str,
     format: str | None,
@@ -357,6 +409,8 @@ def scan(
     skip_vulnerability_check: bool | None,
     no_blame: bool,
     config_path: str | None,
+    no_plugins: bool,
+    list_plugins: bool,
 ) -> None:
     cli_overrides = CliOverrides(
         format=format.lower() if format is not None else None,
@@ -366,6 +420,50 @@ def scan(
     )
     config_root = _config_root_for_scan(target)
     effective = _load_effective_settings(config_root, config_path, cli=cli_overrides)
+    enable_plugins = not no_plugins
+
+    if list_plugins:
+        remote = resolve_remote_target(target)
+        if remote is not None:
+            scan_ui = ScanUI.create(plain=plain, file=sys.stderr)
+            scan_ui.console.print(scan_ui.fetch_message(remote.display_name), markup=False)
+            try:
+                with temporary_clone(
+                    remote, status=lambda: scan_ui.clone_status(remote.display_name)
+                ) as repo:
+                    _run_scan_command(
+                        repo=repo,
+                        target_label=target,
+                        format=effective.format,
+                        resolved_output=effective.output or _default_output(effective.format),
+                        write_to_stdout=False,
+                        min_confidence=effective.min_confidence,
+                        inject_badge=False,
+                        diff_ref=None,
+                        scan_ui=scan_ui,
+                        output_root=Path.cwd(),
+                        prepare_ignore=False,
+                        scan_settings=effective,
+                        enable_plugins=enable_plugins,
+                        list_plugins=True,
+                    )
+            except RemoteCloneError as exc:
+                scan_ui.print_error(str(exc))
+                raise SystemExit(1) from exc
+            return
+
+        repo = Path(target).resolve()
+        if not repo.is_dir():
+            console.print(
+                f"[red]Error:[/red] Path does not exist or is not a directory: {target}"
+            )
+            raise SystemExit(1)
+        _print_plugin_list(
+            repo,
+            enable_plugins=enable_plugins,
+            disabled_plugins=effective.disabled_plugins,
+        )
+        return
 
     settings = ScanSettings(
         target=target,
@@ -427,6 +525,7 @@ def scan(
                     skip_vulnerability_check=skip_vulnerability_check,
                     no_blame=no_blame,
                     scan_settings=effective,
+                    enable_plugins=enable_plugins,
                 )
         except RemoteCloneError as exc:
             scan_ui.print_error(str(exc))
@@ -453,6 +552,7 @@ def scan(
         skip_vulnerability_check=skip_vulnerability_check,
         no_blame=no_blame,
         scan_settings=effective,
+        enable_plugins=enable_plugins,
     )
 
 
@@ -509,6 +609,12 @@ def scan(
     default=None,
     help="Path to rebrief.toml (overrides auto-discovery).",
 )
+@click.option(
+    "--no-plugins",
+    is_flag=True,
+    default=False,
+    help="Disable third-party plugins (local and pip entry points).",
+)
 def multi(
     targets: tuple[str, ...],
     format: str | None,
@@ -518,6 +624,7 @@ def multi(
     skip_vulnerability_check: bool | None,
     no_blame: bool,
     config_path: str | None,
+    no_plugins: bool,
 ) -> None:
     """Scan multiple repositories or monorepo workspaces into one system briefing."""
     target_list = list(targets) if targets else ["."]
@@ -533,6 +640,7 @@ def multi(
         cli=cli_overrides,
         system_output=True,
     )
+    enable_plugins = not no_plugins
     format = effective.format
     resolved_output = effective.output or _default_system_output(format)
     write_to_stdout = resolved_output == "-"
@@ -559,6 +667,8 @@ def multi(
                 extra_ignore_patterns=effective.extra_ignore_patterns,
                 entropy_cutoff=effective.entropy_cutoff,
                 custom_secret_patterns=effective.custom_secret_patterns,
+                enable_plugins=enable_plugins,
+                disabled_plugins=effective.disabled_plugins,
             )
     except RemoteCloneError as exc:
         scan_ui.print_error(str(exc))

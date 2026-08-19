@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from rebrief.core.confidence import Confidence, meets_threshold, parse_min_confidence
-from rebrief.core.reporter import ReportGenerator
+from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RisksParser
 from rebrief.parsers.stack import StackResult
@@ -85,7 +85,7 @@ def test_manifest_warning_has_high_confidence(tmp_path: Path) -> None:
         "secrets": [],
         "dependency_conflicts": [],
     }
-    generator = ReportGenerator(str(tmp_path / "repo"), stack, {}, git_log, risks)
+    generator = ReportGenerator(str(tmp_path / "repo"), stack, {}, git_log, collected_items_from_risk_report(risks))
     payload = generator.to_dict()
 
     assert payload["risk_map"]["warning"][0]["confidence"] == Confidence.HIGH.value
@@ -98,7 +98,7 @@ def test_dependency_conflict_has_medium_confidence(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.LOW,
     )
     payload = generator.to_dict()
@@ -118,7 +118,7 @@ def test_default_min_confidence_hides_low_markers(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
     )
 
     payload = generator.to_dict()
@@ -134,7 +134,7 @@ def test_low_min_confidence_includes_markers(tmp_path: Path) -> None:
         stack,
         rules,
         git_log,
-        risks,
+        collected_items_from_risk_report(risks),
         min_confidence=Confidence.LOW,
     )
 

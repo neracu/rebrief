@@ -34,6 +34,7 @@ def test_scan_help() -> None:
     assert "--yes" in result.output
     assert "-y" in result.output
     assert "--skip-vulnerability-check" in result.output
+    assert "--no-blame" in result.output
 
 
 def test_badge_help() -> None:

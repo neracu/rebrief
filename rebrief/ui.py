@@ -96,6 +96,7 @@ class ScanSettings:
     inject_badge: bool
     output_custom: bool = False
     skip_vulnerability_check: bool = False
+    no_blame: bool = False
 
     def apply_format(self, format: str) -> None:
         self.format = format
@@ -330,6 +331,11 @@ class ScanUI:
             "Vulnerability check",
             "skip" if settings.skip_vulnerability_check else "on",
         )
+        table.add_row(
+            "[8]",
+            "Git blame",
+            "skip" if settings.no_blame else "on",
+        )
         self.console.print(
             Panel(
                 Group(table, Text(""), Text(hint, style="dim")),
@@ -393,7 +399,7 @@ class ScanUI:
             show_panel(hint)
             hint = "[s] Start scan    [q] Quit"
             choice = ask(
-                "Select [1-7], s to start, q to quit",
+                "Select [1-8], s to start, q to quit",
                 default="s",
             ).strip().lower()
             if choice in {"s", "start"}:
@@ -447,8 +453,15 @@ class ScanUI:
                     choices=["y", "n"],
                 ).strip().lower()
                 settings.skip_vulnerability_check = selected in {"n", "no"}
+            elif choice == "8":
+                selected = ask(
+                    "Git blame",
+                    default="n" if settings.no_blame else "y",
+                    choices=["y", "n"],
+                ).strip().lower()
+                settings.no_blame = selected in {"n", "no"}
             else:
-                hint = "Unknown choice. Use 1-7, s, or q."
+                hint = "Unknown choice. Use 1-8, s, or q."
 
     def print_scan_header(
         self,
@@ -510,6 +523,7 @@ class ScanUI:
     ) -> None:
         self._print_tech_stack(payload)
         self._print_hotspots(payload)
+        self._print_ownership_map(payload)
         self._print_risk_map(payload)
         self._print_token_savings(payload["summary"]["token_stats"])
         self.print_completion(
@@ -591,6 +605,43 @@ class ScanUI:
                     str(item["changes"]),
                     churn_bar(item["changes"], max_count, plain=self.plain),
                 )
+
+        self.console.print(table)
+
+    def _print_ownership_map(self, payload: ReportPayload) -> None:
+        ownership_map = payload.get("ownership_map", {})
+        if not ownership_map:
+            return
+
+        table = Table(
+            title="Code Ownership",
+            box=box.SIMPLE_HEAD,
+            show_header=True,
+            header_style="bold",
+            padding=(0, 1),
+        )
+        table.add_column("Module", overflow="fold")
+        table.add_column("Primary", no_wrap=True)
+        table.add_column("Secondary / AI", overflow="fold")
+        table.add_column("Expertise", no_wrap=True)
+
+        from rebrief.parsers.ownership import format_secondary_display
+
+        for module_path in sorted(ownership_map):
+            entry = ownership_map[module_path]
+            secondary = format_secondary_display(
+                secondary=entry["secondary"],
+                secondary_percent=entry["secondary_percent"],
+                ai_assisted=entry["ai_assisted"],
+                ai_percent=entry["ai_percent"],
+                ai_tools=entry["ai_tools"],
+            )
+            table.add_row(
+                module_path,
+                f"{entry['primary_owner']} ({entry['primary_percent']:.0f}%)",
+                secondary,
+                entry["expertise_level"],
+            )
 
         self.console.print(table)
 

@@ -68,6 +68,7 @@ def _build_generator(
     scan_ui: ScanUI,
     diff_scope: DiffScope | None = None,
     skip_vulnerability_check: bool = False,
+    no_blame: bool = False,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     with scan_ui.scan_progress() as status:
@@ -77,6 +78,7 @@ def _build_generator(
             diff_scope=diff_scope,
             status=status,
             skip_vulnerability_check=skip_vulnerability_check,
+            no_blame=no_blame,
         )
 
 
@@ -129,6 +131,7 @@ def _run_scan_command(
     output_root: Path,
     prepare_ignore: bool,
     skip_vulnerability_check: bool = False,
+    no_blame: bool = False,
 ) -> None:
     if prepare_ignore and _prepare_repo(repo, scan_ui.console):
         scan_ui.print_dim(f"  Created {REBRIEFIGNORE_FILENAME} with default exclusions")
@@ -154,6 +157,7 @@ def _run_scan_command(
         scan_ui=scan_ui,
         diff_scope=diff_scope,
         skip_vulnerability_check=skip_vulnerability_check,
+        no_blame=no_blame,
     )
 
     output_path: Path | None = None
@@ -247,6 +251,12 @@ def _run_scan_command(
     default=False,
     help="Skip remote OSV API calls (air-gapped / faster local scans).",
 )
+@click.option(
+    "--no-blame",
+    is_flag=True,
+    default=False,
+    help="Skip git blame ownership analysis on large repositories.",
+)
 def scan(
     target: str,
     format: str,
@@ -257,6 +267,7 @@ def scan(
     plain: bool,
     yes: bool,
     skip_vulnerability_check: bool,
+    no_blame: bool,
 ) -> None:
     settings = ScanSettings(
         target=target,
@@ -267,6 +278,7 @@ def scan(
         inject_badge=inject_badge,
         output_custom=output is not None,
         skip_vulnerability_check=skip_vulnerability_check,
+        no_blame=no_blame,
     )
     write_to_stdout = settings.output == "-"
     ui_file = sys.stderr if write_to_stdout else sys.stdout
@@ -289,6 +301,7 @@ def scan(
     inject_badge = settings.inject_badge
     diff_ref = settings.diff_ref
     skip_vulnerability_check = settings.skip_vulnerability_check
+    no_blame = settings.no_blame
 
     remote = resolve_remote_target(target)
     if remote is not None:
@@ -314,6 +327,7 @@ def scan(
                     output_root=Path.cwd(),
                     prepare_ignore=False,
                     skip_vulnerability_check=skip_vulnerability_check,
+                    no_blame=no_blame,
                 )
         except RemoteCloneError as exc:
             scan_ui.print_error(str(exc))
@@ -338,6 +352,7 @@ def scan(
         output_root=repo,
         prepare_ignore=True,
         skip_vulnerability_check=skip_vulnerability_check,
+        no_blame=no_blame,
     )
 
 

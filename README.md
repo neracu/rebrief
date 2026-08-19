@@ -73,6 +73,7 @@ rebrief scan .
 - **Deep Stack & Manifest Detection** - Recursive scan for ecosystem manifests across JavaScript/TypeScript, Python, Go, Rust, Java, Kotlin, PHP, and Ruby — including mono-repos and nested layouts. Parses dependencies, infers frameworks, and flags malformed manifests as warnings.
 - **Context & Rules Harvesting** - Extracts local project context from `.cursorrules`, `CLAUDE.md`, `README.md`, and related instruction files so the next developer knows how the project was meant to be built.
 - **Noise-Filtered Git Archaeology** - Filters low-value commits (wip, fix typo, minor updates) to surface a cleaner timeline of meaningful changes and 30-day change-density hotspots.
+- **Code Ownership & Expertise Map** - Git blame analysis per module with contributor percentages, AI co-author detection (Claude, Cursor, Copilot, and similar), and expertise labels. Use `--no-blame` to skip on very large repositories.
 - **Local-First Risk Mapping** - Static analysis for hardcoded secrets, unresolved technical debt (TODO/FIXME), missing test directories, and dependency conflicts. Secret-like values under test/fixture paths are reported as WARNING (confirm they are fixtures) rather than CRITICAL credentials to rotate. No cloud upload, no API keys.
 - **Token savings analysis** - Estimates raw codebase tokens vs the generated brief (`cl100k_base` via optional `tiktoken`, or a `len(text) / 4` fallback) and reports the compression ratio in the CLI, `REBRIEF.md`, JSON `summary.token_stats`, XML `summary`, and the HTML dashboard.
 - **Markdown, JSON, XML, or HTML output** - Default handoff report is `REBRIEF.md`; use `-f json` for a structured `REBRIEF.json` payload, `-f xml` for a compact `REBRIEF.xml` brief, or `-f html` for a standalone `REBRIEF.html` dashboard.
@@ -123,6 +124,7 @@ rebrief scan . -f html -o -         # HTML dashboard to stdout (status on stderr
 rebrief scan . --diff               # incremental vs HEAD~1
 rebrief scan . --diff origin/main   # incremental vs PR/base ref
 rebrief scan . --skip-vulnerability-check  # skip remote OSV CVE checks
+rebrief scan . --no-blame                  # skip git blame ownership analysis
 rebrief badge .                     # Shields.io Markdown + HTML to stdout
 rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .
@@ -162,7 +164,7 @@ If the markers are present, the content between them is replaced. If they are mi
 
 ### JSON output
 
-For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, file-count fields (`files_scanned`, `files_total`), and `token_stats` (`raw_codebase_tokens`, `brief_tokens`, `savings_percentage`, `tokenizer`) for full and incremental scans.
+For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `ownership_map`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, file-count fields (`files_scanned`, `files_total`), and `token_stats` (`raw_codebase_tokens`, `brief_tokens`, `savings_percentage`, `tokenizer`) for full and incremental scans.
 
 ```bash
 rebrief scan . -f json
@@ -411,6 +413,12 @@ Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks ar
 
 ### Hotspots (Change Density)
 - src/app.py: 8 changes
+
+### 👥 Code Ownership & Expertise Map
+| Module / Path | Primary Owner | Secondary / AI Contributor | Expertise Level |
+|---|---|---|---|
+| `apps/backend/` | Alex (65%) | 🤖 AI-Assisted (35% Claude) | High Activity |
+| `packages/db/` | Aidar (80%) | Alice (20%) | Stable / Maintenance |
 
 ## 4. Risk Map (AI Debt & Security)
 ### [CRITICAL]

@@ -230,6 +230,7 @@ def test_to_dict_structure(tmp_path: Path) -> None:
         "summary",
         "tech_stack",
         "timeline",
+        "ownership_map",
         "risk_map",
         "checklist",
     }
@@ -451,6 +452,7 @@ def test_generate_xml_structure(tmp_path: Path) -> None:
         "summary",
         "tech_stack",
         "hotspots",
+        "ownership_map",
         "risk_map",
         "checklist",
     ]

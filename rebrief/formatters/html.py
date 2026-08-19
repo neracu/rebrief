@@ -335,6 +335,44 @@ def _risk_cards(payload: ReportPayload) -> str:
     )
 
 
+def _ownership_table(payload: ReportPayload) -> str:
+    ownership_map = payload.get("ownership_map", {})
+    if not ownership_map:
+        return '<p class="empty">None detected.</p>'
+
+    rows: list[str] = []
+    for module_path in sorted(ownership_map):
+        entry = ownership_map[module_path]
+        from rebrief.parsers.ownership import format_secondary_display
+
+        secondary = format_secondary_display(
+            secondary=entry["secondary"],
+            secondary_percent=entry["secondary_percent"],
+            ai_assisted=entry["ai_assisted"],
+            ai_percent=entry["ai_percent"],
+            ai_tools=entry["ai_tools"],
+        )
+        rows.append(
+            "<tr>"
+            f'<td class="path">{_e(module_path)}</td>'
+            f"<td>{_e(entry['primary_owner'])} ({entry['primary_percent']:.0f}%)</td>"
+            f"<td>{_e(secondary)}</td>"
+            f"<td>{_e(entry['expertise_level'])}</td>"
+            "</tr>"
+        )
+    return (
+        '<table class="hotspots">'
+        "<thead><tr>"
+        "<th>Module / Path</th>"
+        "<th>Primary Owner</th>"
+        "<th>Secondary / AI Contributor</th>"
+        "<th>Expertise Level</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody>"
+        "</table>"
+    )
+
+
 def _hotspots_table(payload: ReportPayload) -> str:
     hotspots = payload["timeline"]["hotspots"]
     if not hotspots:
@@ -454,6 +492,10 @@ def render_html(payload: ReportPayload, markdown: str, repo_name: str) -> str:
   <section class="card">
     <h2>Codebase hotspots</h2>
     {_hotspots_table(payload)}
+  </section>
+  <section class="card">
+    <h2>Code ownership</h2>
+    {_ownership_table(payload)}
   </section>
   <section class="card">
     <h2>Developer checklist</h2>

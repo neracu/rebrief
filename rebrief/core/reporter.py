@@ -18,6 +18,11 @@ from rebrief.core.tokens import (
 )
 from rebrief.core.vulnerabilities import VulnerabilityReport
 from rebrief.parsers.git_log import GitLogResult
+from rebrief.parsers.ownership import (
+    ModuleOwnership,
+    OwnershipResult,
+    format_ownership_table,
+)
 from rebrief.parsers.risks import RiskReport, is_test_or_fixture_path
 from rebrief.parsers.rules import RuleFileEntry
 from rebrief.parsers.stack import StackResult
@@ -88,6 +93,7 @@ class ReportPayload(TypedDict):
     summary: ReportSummary
     tech_stack: ReportTechStack
     timeline: ReportTimeline
+    ownership_map: dict[str, ModuleOwnership]
     risk_map: ReportRiskMap
     checklist: list[str]
 
@@ -124,6 +130,8 @@ class ReportGenerator:
         raw_token_stats: TokenStats | None = None,
         vulnerabilities: VulnerabilityReport | None = None,
         skip_vulnerability_check: bool = False,
+        ownership: OwnershipResult | None = None,
+        no_blame: bool = False,
     ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
@@ -140,6 +148,12 @@ class ReportGenerator:
             "skip_message": None,
         }
         self._skip_vulnerability_check = skip_vulnerability_check
+        self._ownership = ownership or {
+            "modules": {},
+            "skipped": no_blame,
+            "skip_reason": "disabled via --no-blame" if no_blame else None,
+        }
+        self._no_blame = no_blame
 
     def generate(self) -> str:
         body = self._body()
@@ -196,6 +210,27 @@ class ReportGenerator:
                 file=entry["file"],
                 changes=str(entry["changes"]),
             )
+
+        ownership_map = ET.SubElement(root, "ownership_map")
+        for module_path, entry in sorted(payload["ownership_map"].items()):
+            module = ET.SubElement(
+                ownership_map,
+                "module",
+                path=module_path,
+                primary_owner=entry["primary_owner"],
+                primary_percent=f"{entry['primary_percent']:.0f}",
+                secondary=entry["secondary"],
+                secondary_percent=f"{entry['secondary_percent']:.0f}",
+                ai_assisted=str(entry["ai_assisted"]).lower(),
+                ai_percent=f"{entry['ai_percent']:.1f}",
+                expertise_level=entry["expertise_level"],
+                rapid_ai_session=str(entry["rapid_ai_session"]).lower(),
+                line_count=str(entry["line_count"]),
+            )
+            if entry["ai_tools"]:
+                tools = ET.SubElement(module, "ai_tools")
+                for tool in entry["ai_tools"]:
+                    _xml_text(tools, "tool", tool)
 
         risk_map = ET.SubElement(root, "risk_map")
         for severity in ("critical", "warning", "info"):
@@ -288,6 +323,7 @@ class ReportGenerator:
                     for entry in self._git_log["top_modified_files"]
                 ],
             },
+            "ownership_map": dict(self._ownership["modules"]),
             "risk_map": risk_map,
             "checklist": self._checklist_items(),
         }
@@ -517,7 +553,29 @@ class ReportGenerator:
         else:
             lines.append("- None detected.")
 
+        lines.append("")
+        lines.extend(self._section_ownership())
+
         return "\n".join(lines)
+
+    def _section_ownership(self) -> list[str]:
+        lines = ["### 👥 Code Ownership & Expertise Map"]
+
+        if self._no_blame or self._ownership.get("skipped"):
+            lines.append(
+                "- Git blame ownership analysis skipped (`--no-blame`)."
+            )
+            return lines
+
+        modules = self._ownership.get("modules", {})
+        if not modules:
+            if self._git_log.get("status_message"):
+                return []
+            lines.append("- None detected.")
+            return lines
+
+        lines.extend(format_ownership_table(modules))
+        return lines
 
     def _section_risks(self) -> str:
         lines = [

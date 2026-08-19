@@ -42,6 +42,7 @@ def _settings(**overrides: object) -> ScanSettings:
         "inject_badge": False,
         "output_custom": False,
         "skip_vulnerability_check": False,
+        "no_blame": False,
     }
     values.update(overrides)
     return ScanSettings(**values)  # type: ignore[arg-type]
@@ -150,6 +151,7 @@ def test_print_settings_panel_lists_fields() -> None:
     assert "Diff" in text
     assert "Inject badge" in text
     assert "Vulnerability check" in text
+    assert "Git blame" in text
     assert "Start scan" in text
     assert "Quit" in text
     assert "HEAD~1" in text

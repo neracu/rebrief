@@ -10,6 +10,7 @@ from rebrief.core.reporter import ReportGenerator
 from rebrief.core.tokens import count_repo_tokens
 from rebrief.core.vulnerabilities import check_vulnerabilities
 from rebrief.parsers.git_log import GitLogParser
+from rebrief.parsers.ownership import OwnershipParser
 from rebrief.parsers.risks import RisksParser
 from rebrief.parsers.rules import RulesParser
 from rebrief.parsers.stack import StackParser
@@ -25,6 +26,7 @@ def run_scan(
     max_churn_files: int | None = None,
     status: StatusFactory | None = None,
     skip_vulnerability_check: bool = False,
+    no_blame: bool = False,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     step = status or (lambda _message: nullcontext())
@@ -43,6 +45,7 @@ def run_scan(
             git_log = GitLogParser(
                 repo, diff_ref=diff_ref, max_churn_files=max_churn_files
             ).parse()
+        ownership = OwnershipParser(repo, paths=paths, skip=no_blame).parse()
 
     with step("[3/4] Running risk detectors & vulnerability checks..."):
         risks = RisksParser(
@@ -66,4 +69,6 @@ def run_scan(
             raw_token_stats=raw_token_stats,
             vulnerabilities=vulnerabilities,
             skip_vulnerability_check=skip_vulnerability_check,
+            ownership=ownership,
+            no_blame=no_blame,
         )

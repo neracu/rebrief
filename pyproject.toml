@@ -53,3 +53,6 @@ exclude = ["tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "osv_network: tests that exercise the OSV client with mocked transport",
+]

@@ -40,7 +40,7 @@ def test_get_risk_map_shape_and_confidence_filter(tmp_path: Path) -> None:
     _seed_repo(tmp_path)
     service = ScanService()
     medium = service.get_risk_map(str(tmp_path), min_confidence="medium")
-    assert set(medium.keys()) == {"critical", "warning", "info"}
+    assert set(medium.keys()) == {"critical", "warning", "info", "vulnerabilities"}
     high = service.get_risk_map(str(tmp_path), min_confidence="high")
     assert len(high["info"]) <= len(medium["info"])
 

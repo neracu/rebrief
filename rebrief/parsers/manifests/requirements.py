@@ -4,8 +4,7 @@ import re
 from pathlib import Path
 
 from rebrief.parsers.manifests.base import ManifestParseResult, empty_result
-
-_REQUIREMENT_NAME_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
+from rebrief.parsers.manifests.versions import PackageSpec, parse_pypi_spec
 
 
 def parse(path: Path) -> ManifestParseResult:
@@ -15,6 +14,7 @@ def parse(path: Path) -> ManifestParseResult:
         return empty_result(f"Could not read {path.name}: {exc}")
 
     dependencies: list[str] = []
+    packages: list[PackageSpec] = []
     for line in lines:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -22,8 +22,17 @@ def parse(path: Path) -> ManifestParseResult:
         if stripped.startswith(("-r", "--requirement", "-e", "--editable")):
             continue
 
-        match = _REQUIREMENT_NAME_RE.match(stripped)
+        pkg = parse_pypi_spec(stripped)
+        if pkg is not None:
+            packages.append(pkg)
+            dependencies.append(pkg["name"])
+            continue
+
+        match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)", stripped)
         if match:
             dependencies.append(match.group(1))
 
-    return {"dependencies": dependencies}
+    result: ManifestParseResult = {"dependencies": dependencies}
+    if packages:
+        result["packages"] = packages
+    return result

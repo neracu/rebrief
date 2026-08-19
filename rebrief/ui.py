@@ -95,6 +95,7 @@ class ScanSettings:
     diff_ref: str | None
     inject_badge: bool
     output_custom: bool = False
+    skip_vulnerability_check: bool = False
 
     def apply_format(self, format: str) -> None:
         self.format = format
@@ -324,6 +325,11 @@ class ScanUI:
         table.add_row("[4]", "Min confidence", settings.min_confidence)
         table.add_row("[5]", "Diff", settings.diff_ref or "off")
         table.add_row("[6]", "Inject badge", "yes" if settings.inject_badge else "no")
+        table.add_row(
+            "[7]",
+            "Vulnerability check",
+            "skip" if settings.skip_vulnerability_check else "on",
+        )
         self.console.print(
             Panel(
                 Group(table, Text(""), Text(hint, style="dim")),
@@ -387,7 +393,7 @@ class ScanUI:
             show_panel(hint)
             hint = "[s] Start scan    [q] Quit"
             choice = ask(
-                "Select [1-6], s to start, q to quit",
+                "Select [1-7], s to start, q to quit",
                 default="s",
             ).strip().lower()
             if choice in {"s", "start"}:
@@ -434,8 +440,15 @@ class ScanUI:
                     choices=["y", "n"],
                 ).strip().lower()
                 settings.inject_badge = selected in {"y", "yes"}
+            elif choice == "7":
+                selected = ask(
+                    "Vulnerability check",
+                    default="n" if settings.skip_vulnerability_check else "y",
+                    choices=["y", "n"],
+                ).strip().lower()
+                settings.skip_vulnerability_check = selected in {"n", "no"}
             else:
-                hint = "Unknown choice. Use 1-6, s, or q."
+                hint = "Unknown choice. Use 1-7, s, or q."
 
     def print_scan_header(
         self,

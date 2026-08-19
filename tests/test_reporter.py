@@ -252,7 +252,12 @@ def test_to_dict_structure(tmp_path: Path) -> None:
         "dependencies",
     }
     assert set(payload["timeline"].keys()) == {"recent_commits", "hotspots"}
-    assert set(payload["risk_map"].keys()) == {"critical", "warning", "info"}
+    assert set(payload["risk_map"].keys()) == {
+        "critical",
+        "warning",
+        "info",
+        "vulnerabilities",
+    }
 
 
 def test_incremental_report_metadata(tmp_path: Path) -> None:
@@ -343,7 +348,12 @@ def test_to_dict_empty_risks(tmp_path: Path) -> None:
     generator = ReportGenerator(str(tmp_path / "clean-repo"), stack, {}, git_log, risks)
     payload = generator.to_dict()
 
-    assert payload["risk_map"] == {"critical": [], "warning": [], "info": []}
+    assert payload["risk_map"] == {
+        "critical": [],
+        "warning": [],
+        "info": [],
+        "vulnerabilities": [],
+    }
     assert payload["summary"]["risks_count"] == 0
 
 

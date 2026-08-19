@@ -122,6 +122,7 @@ rebrief scan . -f html              # → REBRIEF.html
 rebrief scan . -f html -o -         # HTML dashboard to stdout (status on stderr)
 rebrief scan . --diff               # incremental vs HEAD~1
 rebrief scan . --diff origin/main   # incremental vs PR/base ref
+rebrief scan . --skip-vulnerability-check  # skip remote OSV CVE checks
 rebrief badge .                     # Shields.io Markdown + HTML to stdout
 rebrief scan . --inject-badge       # update README.md badge markers
 rebrief init .

@@ -10,6 +10,7 @@ from rebrief.parsers.manifests import (
     MANIFEST_LANGUAGES,
     parse_manifest,
 )
+from rebrief.parsers.manifests.versions import PackageSpec
 
 FRAMEWORK_SIGNATURES: dict[str, str] = {
     "next.config.js": "Next.js",
@@ -76,6 +77,7 @@ class StackResult(TypedDict):
     manifests: list[str]
     frameworks: list[str]
     dependencies: list[str]
+    packages: list[PackageSpec]
     is_empty: bool
     manifest_warnings: list[str]
 
@@ -96,7 +98,9 @@ class StackParser:
         is_empty = not any(True for _ in self._walk_files())
         manifest_paths = self._find_files(MANIFEST_FILES)
         signature_paths = self._find_files(tuple(FRAMEWORK_SIGNATURES.keys()))
-        dependencies, manifest_warnings = self._extract_dependencies(manifest_paths)
+        dependencies, packages, manifest_warnings = self._extract_dependencies(
+            manifest_paths
+        )
 
         languages = sorted(
             {
@@ -115,6 +119,7 @@ class StackParser:
             "manifests": manifest_paths,
             "frameworks": frameworks,
             "dependencies": dependencies,
+            "packages": packages,
             "is_empty": is_empty,
             "manifest_warnings": manifest_warnings,
         }
@@ -190,9 +195,11 @@ class StackParser:
 
     def _extract_dependencies(
         self, manifest_paths: list[str]
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[PackageSpec], list[str]]:
         dependencies: list[str] = []
+        packages: list[PackageSpec] = []
         manifest_warnings: list[str] = []
+        seen_packages: set[tuple[str, str, str]] = set()
 
         for relative_path in manifest_paths:
             path = self._repo_path / relative_path
@@ -200,10 +207,16 @@ class StackParser:
 
             dependencies.extend(result.get("dependencies", []))
 
+            for pkg in result.get("packages", []):
+                key = (pkg["ecosystem"], pkg["name"], pkg["version"])
+                if key not in seen_packages:
+                    seen_packages.add(key)
+                    packages.append(pkg)
+
             error = result.get("error")
             if error:
                 manifest_warnings.append(
                     f"Malformed manifest: {relative_path} ({error})"
                 )
 
-        return sorted(set(dependencies)), sorted(manifest_warnings)
+        return sorted(set(dependencies)), packages, sorted(manifest_warnings)

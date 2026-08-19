@@ -11,6 +11,7 @@ def test_empty_repo(tmp_path: Path) -> None:
         "manifests",
         "frameworks",
         "dependencies",
+        "packages",
         "is_empty",
         "manifest_warnings",
     }
@@ -18,6 +19,7 @@ def test_empty_repo(tmp_path: Path) -> None:
     assert result["manifests"] == []
     assert result["frameworks"] == []
     assert result["dependencies"] == []
+    assert result["packages"] == []
     assert result["manifest_warnings"] == []
     assert result["is_empty"] is True
 

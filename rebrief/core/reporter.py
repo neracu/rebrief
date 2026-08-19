@@ -16,6 +16,7 @@ from rebrief.core.tokens import (
     empty_token_stats,
     format_savings_footnote,
 )
+from rebrief.core.vulnerabilities import VulnerabilityReport
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RiskReport, is_test_or_fixture_path
 from rebrief.parsers.rules import RuleFileEntry
@@ -65,10 +66,19 @@ class ReportRiskItem(TypedDict):
     confidence: str
 
 
+class ReportVulnerability(TypedDict):
+    id: str
+    package: str
+    severity: str
+    fixed_in: str
+    summary: str
+
+
 class ReportRiskMap(TypedDict):
     critical: list[ReportRiskItem]
     warning: list[ReportRiskItem]
     info: list[ReportRiskItem]
+    vulnerabilities: list[ReportVulnerability]
 
 
 class ReportPayload(TypedDict):
@@ -112,6 +122,8 @@ class ReportGenerator:
         min_confidence: Confidence = Confidence.MEDIUM,
         diff_scope: DiffScope | None = None,
         raw_token_stats: TokenStats | None = None,
+        vulnerabilities: VulnerabilityReport | None = None,
+        skip_vulnerability_check: bool = False,
     ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
@@ -122,6 +134,12 @@ class ReportGenerator:
         self._diff_scope = diff_scope
         self._raw_token_stats = raw_token_stats or empty_token_stats()
         self._token_stats: TokenStats | None = None
+        self._vulnerabilities = vulnerabilities or {
+            "findings": [],
+            "skipped": False,
+            "skip_message": None,
+        }
+        self._skip_vulnerability_check = skip_vulnerability_check
 
     def generate(self) -> str:
         body = self._body()
@@ -340,6 +358,29 @@ class ReportGenerator:
                 }
             )
 
+        if self._vulnerabilities["skipped"] and self._vulnerabilities["skip_message"]:
+            items.append(
+                {
+                    "severity": "info",
+                    "message": self._vulnerabilities["skip_message"],
+                    "confidence": Confidence.HIGH.value,
+                }
+            )
+
+        for finding in self._vulnerabilities["findings"]:
+            fixed = finding["fixed_in"]
+            fix_text = f" (fix: {fixed})" if fixed else ""
+            items.append(
+                {
+                    "severity": finding["severity"],
+                    "message": (
+                        f"{finding['id']} in `{finding['package']}`: "
+                        f"{finding['summary']}{fix_text}"
+                    ),
+                    "confidence": finding["confidence"],
+                }
+            )
+
         return items
 
     def _filtered_risk_items(self) -> list[_CollectedRiskItem]:
@@ -366,7 +407,23 @@ class ReportGenerator:
             else:
                 info.append(payload)
 
-        return {"critical": critical, "warning": warning, "info": info}
+        vulnerabilities = [
+            {
+                "id": finding["id"],
+                "package": finding["package"],
+                "severity": finding["severity"],
+                "fixed_in": finding["fixed_in"],
+                "summary": finding["summary"],
+            }
+            for finding in self._vulnerabilities["findings"]
+        ]
+
+        return {
+            "critical": critical,
+            "warning": warning,
+            "info": info,
+            "vulnerabilities": vulnerabilities,
+        }
 
     def _title(self) -> str:
         if self._diff_scope is not None:
@@ -474,7 +531,26 @@ class ReportGenerator:
         lines.append("")
         lines.append("### [INFO]")
         lines.extend(self._format_risk_tier("info"))
+        if not self._skip_vulnerability_check:
+            lines.append("")
+            lines.extend(self._section_vulnerability_report())
         return "\n".join(lines)
+
+    def _section_vulnerability_report(self) -> list[str]:
+        lines = ["### 🛡️ Vulnerability Report"]
+        findings = self._vulnerabilities["findings"]
+        if not findings:
+            lines.append("- None detected.")
+            return lines
+
+        for finding in findings:
+            fixed = finding["fixed_in"]
+            fix_text = f" — upgrade to `{fixed}`" if fixed else ""
+            lines.append(
+                f"- **{finding['id']}** (`{finding['package']}`): "
+                f"{finding['summary']}{fix_text}"
+            )
+        return lines
 
     def _format_risk_tier(self, severity: Severity) -> list[str]:
         items = [
@@ -525,6 +601,15 @@ class ReportGenerator:
             items.append(
                 f"Resolve version conflict for `{conflict['package']}`: {versions}."
             )
+
+        for finding in self._vulnerabilities["findings"]:
+            if not self._is_filtered_risk(finding["confidence"]):
+                continue
+            if finding["fixed_in"]:
+                items.append(
+                    f"Upgrade `{finding['package']}` to {finding['fixed_in']} "
+                    f"({finding['id']})."
+                )
 
         for framework in self._stack["frameworks"]:
             items.append(f"Set up the development environment for {framework}.")

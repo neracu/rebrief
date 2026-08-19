@@ -33,6 +33,7 @@ def test_scan_help() -> None:
     assert "--no-color" in result.output
     assert "--yes" in result.output
     assert "-y" in result.output
+    assert "--skip-vulnerability-check" in result.output
 
 
 def test_badge_help() -> None:
@@ -103,7 +104,7 @@ def test_scan(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "[1/4] Parsing repository manifests & tech stack..." in result.output
     assert "[2/4] Analyzing git history & hotspots..." in result.output
-    assert "[3/4] Running risk detectors & confidence checks..." in result.output
+    assert "[3/4] Running risk detectors & vulnerability checks..." in result.output
     assert "[4/4] Calculating token metrics & generating report..." in result.output
     assert "Tech Stack" in result.output
     assert "Languages" in result.output

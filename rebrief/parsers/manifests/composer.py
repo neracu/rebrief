@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from rebrief.parsers.manifests.base import ManifestParseResult, empty_result
+from rebrief.parsers.manifests.versions import PackageSpec, parse_composer_version
 
 
 def parse(path: Path) -> ManifestParseResult:
@@ -15,9 +16,18 @@ def parse(path: Path) -> ManifestParseResult:
         return empty_result(f"Could not parse {path.name}: {exc}")
 
     dependencies: list[str] = []
+    packages: list[PackageSpec] = []
     for key in ("require", "require-dev"):
         section = data.get(key)
         if isinstance(section, dict):
             dependencies.extend(section.keys())
+            for name, version in section.items():
+                if isinstance(version, str):
+                    pkg = parse_composer_version(name, version)
+                    if pkg is not None:
+                        packages.append(pkg)
 
-    return {"dependencies": dependencies}
+    result: ManifestParseResult = {"dependencies": dependencies}
+    if packages:
+        result["packages"] = packages
+    return result

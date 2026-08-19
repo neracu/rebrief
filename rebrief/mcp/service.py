@@ -55,6 +55,7 @@ def filter_risk_map(risk_map: ReportRiskMap, minimum: Confidence) -> ReportRiskM
         "critical": keep(risk_map["critical"]),
         "warning": keep(risk_map["warning"]),
         "info": keep(risk_map["info"]),
+        "vulnerabilities": list(risk_map.get("vulnerabilities", [])),
     }
 
 

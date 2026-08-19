@@ -8,6 +8,7 @@ from rebrief.core.confidence import Confidence
 from rebrief.core.diff import DiffScope
 from rebrief.core.reporter import ReportGenerator
 from rebrief.core.tokens import count_repo_tokens
+from rebrief.core.vulnerabilities import check_vulnerabilities
 from rebrief.parsers.git_log import GitLogParser
 from rebrief.parsers.risks import RisksParser
 from rebrief.parsers.rules import RulesParser
@@ -23,6 +24,7 @@ def run_scan(
     diff_scope: DiffScope | None = None,
     max_churn_files: int | None = None,
     status: StatusFactory | None = None,
+    skip_vulnerability_check: bool = False,
 ) -> ReportGenerator:
     """Run parsers and construct a ReportGenerator for the target repo."""
     step = status or (lambda _message: nullcontext())
@@ -42,10 +44,14 @@ def run_scan(
                 repo, diff_ref=diff_ref, max_churn_files=max_churn_files
             ).parse()
 
-    with step("[3/4] Running risk detectors & confidence checks..."):
+    with step("[3/4] Running risk detectors & vulnerability checks..."):
         risks = RisksParser(
             repo, dependencies=stack["dependencies"], paths=paths
         ).parse()
+        vulnerabilities = check_vulnerabilities(
+            stack["packages"],
+            skip=skip_vulnerability_check,
+        )
 
     with step("[4/4] Calculating token metrics & generating report..."):
         raw_token_stats = count_repo_tokens(repo, paths=paths)
@@ -58,4 +64,6 @@ def run_scan(
             min_confidence=min_confidence,
             diff_scope=diff_scope,
             raw_token_stats=raw_token_stats,
+            vulnerabilities=vulnerabilities,
+            skip_vulnerability_check=skip_vulnerability_check,
         )

@@ -55,4 +55,5 @@ exclude = ["tests*"]
 testpaths = ["tests"]
 markers = [
     "osv_network: tests that exercise the OSV client with mocked transport",
+    "docker: tests that require the Docker CLI and build/run container images",
 ]

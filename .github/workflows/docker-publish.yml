@@ -1,0 +1,56 @@
+name: Docker Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image for integration tests
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: rebrief:ci
+          platforms: linux/amd64
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run Docker integration tests
+        env:
+          REBRIEF_DOCKER_IMAGE: rebrief:ci
+        run: pytest -m docker
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/neracu/rebrief:latest
+            ghcr.io/neracu/rebrief:${{ github.ref_name }}

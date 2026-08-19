@@ -40,6 +40,9 @@ Point it at any local repo or a remote Git URL. rebrief walks the stack, rules, 
   - [MCP server](#mcp-server)
   - [Web UI](#web-ui)
   - [Chat mode](#chat-mode)
+- [🐳 Docker](#docker)
+  - [Air-gapped and CI usage](#air-gapped-and-ci-usage)
+  - [GitHub Actions with the container image](#github-actions-with-the-container-image)
 - [⚙️ GitHub Actions](#github-actions)
   - [Set up in your repository](#set-up-in-your-repository)
   - [Use on a pull request](#use-on-a-pull-request)
@@ -339,7 +342,7 @@ That starts the API and UI together at `http://127.0.0.1:8000/` and opens it in 
 | `SCAN_TIMEOUT_SECONDS` | Clone + scan wall clock. Default `120`. |
 | `CHAT_RATE_LIMIT` | Chat endpoint rate limit. Default `20/minute`. |
 
-Split deploy (optional): Docker image for the API; Vercel project root `web/` with `NEXT_PUBLIC_API_URL` pointing at the API origin.
+Split deploy (optional): run `rebrief serve` on the API host (or `pip install "rebrief[web,tokens]"`); Vercel project root `web/` with `NEXT_PUBLIC_API_URL` pointing at the API origin. For CI and air-gapped scans, use the [official Docker image](#docker) instead.
 
 ### Chat mode
 
@@ -359,6 +362,78 @@ rebrief chat . -m ollama/llama3       # local OpenAI-compatible endpoint
 Default model is the first available provider: `anthropic/claude-3-5-sonnet`, `openai/gpt-4o-mini`, `gemini/gemini-2.0-flash`, `openrouter/openai/gpt-4o-mini`, then `ollama/llama3`. Pass `--key` to override the environment. `rebrief chat` and `rebrief serve` also read a `.env` file from the working directory (existing process env vars win). Keys are never written to disk.
 
 REPL slash commands: `/clear` (reset memory), `/copy` (clipboard last reply), `/context` (token usage), `/exit` or `/quit`.
+
+---
+
+<h1 id="docker">🐳 Docker</h1>
+
+Official multi-arch images are published to GitHub Container Registry on every `v*` release tag:
+
+`ghcr.io/neracu/rebrief:latest` · `ghcr.io/neracu/rebrief:v0.3.0`
+
+The image is a minimal CLI runtime (`python:3.12-slim`, `git`, `ca-certificates`) with `ENTRYPOINT ["rebrief"]` and default `CMD ["scan", "."]`. It runs as UID `1000` (non-root) and does not bundle the Next.js web UI.
+
+<h2 id="air-gapped-and-ci-usage">Air-gapped and CI usage</h2>
+
+Pull once on a runner or mirror, then scan a mounted workspace without installing Python or PyPI packages:
+
+```bash
+docker pull ghcr.io/neracu/rebrief:latest
+
+docker run --rm \
+  -v "$(pwd):/app" \
+  -w /app \
+  ghcr.io/neracu/rebrief:latest \
+  scan . -f json -o REBRIEF.json --skip-vulnerability-check
+```
+
+Mount the repository at `/app` (or any path) and set `-w` to that directory. Use `--skip-vulnerability-check` when outbound OSV API access is blocked. Output files must be writable by UID `1000` inside the container (world-writable dirs or matching ownership).
+
+Other subcommands work the same way:
+
+```bash
+docker run --rm -v "$(pwd):/app" -w /app ghcr.io/neracu/rebrief:latest init .
+docker run --rm ghcr.io/neracu/rebrief:latest --version
+```
+
+<h2 id="github-actions-with-the-container-image">GitHub Actions with the container image</h2>
+
+**`docker run` step** (works on any runner with Docker):
+
+```yaml
+- uses: actions/checkout@v4
+
+- name: Scan with rebrief container
+  run: |
+    docker run --rm \
+      -v "${{ github.workspace }}:/app" \
+      -w /app \
+      ghcr.io/neracu/rebrief:latest \
+      scan . -f json -o REBRIEF.json --skip-vulnerability-check
+```
+
+**Container job** (checkout lands in `/github/workspace`):
+
+```yaml
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/neracu/rebrief:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rebrief scan . -f json -o REBRIEF.json --skip-vulnerability-check
+```
+
+**`docker://` action step** (GitHub mounts the workspace at `/github/workspace`):
+
+```yaml
+- uses: actions/checkout@v4
+
+- uses: docker://ghcr.io/neracu/rebrief:latest
+  with:
+    args: scan /github/workspace -f json -o /github/workspace/REBRIEF.json --skip-vulnerability-check
+```
 
 ---
 

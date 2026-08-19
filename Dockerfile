@@ -1,20 +1,49 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+
+FROM python:3.12-slim AS builder
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /build
 
 COPY pyproject.toml README.md LICENSE MANIFEST.in ./
 COPY rebrief ./rebrief
 
-RUN pip install --no-cache-dir ".[web,tokens]"
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir . \
+    && find /opt/venv -type d -name __pycache__ -exec rm -rf {} +
 
-ENV PORT=8000
-EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', '8000'))"
+FROM python:3.12-slim AS runtime
 
-CMD ["sh", "-c", "uvicorn rebrief.webapp.app:app --host 0.0.0.0 --port ${PORT}"]
+ARG REBRIEF_UID=1000
+ARG REBRIEF_GID=1000
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid "${REBRIEF_GID}" rebrief \
+    && useradd --uid "${REBRIEF_UID}" --gid "${REBRIEF_GID}" \
+        --create-home --shell /usr/sbin/nologin rebrief
+
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PATH="/opt/venv/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+USER rebrief
+
+LABEL org.opencontainers.image.source="https://github.com/neracu/rebrief" \
+    org.opencontainers.image.description="rebrief CLI for repository scanning and REBRIEF report generation" \
+    org.opencontainers.image.licenses="MIT"
+
+ENTRYPOINT ["rebrief"]
+CMD ["scan", "."]

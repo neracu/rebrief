@@ -167,7 +167,7 @@ If the markers are present, the content between them is replaced. If they are mi
 
 ### JSON output
 
-For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `ownership_map`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, file-count fields (`files_scanned`, `files_total`), and `token_stats` (`raw_codebase_tokens`, `brief_tokens`, `savings_percentage`, `tokenizer`) for full and incremental scans.
+For automation or downstream tools, pass `-f json` (or `--format json`). The report is a typed JSON object with `mode`, `diff_ref`, `summary`, `tech_stack`, `timeline`, `ownership_map`, `risk_map`, and `checklist` — the same analysis as the Markdown report, without section prose. The `summary` object includes `badge_url`, `badge_markdown`, file-count fields (`files_scanned`, `files_total`), `token_stats` (`raw_codebase_tokens`, `brief_tokens`, `savings_percentage`, `tokenizer`), and `doc_drift` (`freshness_score`, `freshness_label`, `scanned_files`, `components`, `items`) for documentation freshness analysis.
 
 ```bash
 rebrief scan . -f json
@@ -460,7 +460,12 @@ Set `only-on-risk: true` to post comments only when WARNING or CRITICAL risks ar
 ### [INFO]
 - TODO in app.py:10
 
-## 5. Developer Checklist ("Where to Start")
+## 6. 📉 Documentation Freshness & Drift
+Freshness Score: 72% (Needs Review)
+- [WARNING] [Confidence: HIGH] README.md references "Vue" but project depends on "React"
+- [WARNING] [Confidence: MEDIUM] `.env.example` defines `API_KEY` but it is not documented in project docs
+
+## 7. Developer Checklist ("Where to Start")
 1. Review and rotate hard-coded credentials in config.py (line 3).
 2. Add a `tests/` directory and cover critical paths.
 3. Resolve version conflict for `django`: ==3.2, ==4.2.

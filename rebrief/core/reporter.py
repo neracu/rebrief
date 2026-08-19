@@ -17,6 +17,7 @@ from rebrief.core.tokens import (
     format_savings_footnote,
 )
 from rebrief.core.vulnerabilities import VulnerabilityReport
+from rebrief.parsers.freshness import DocDriftReport, empty_doc_drift_report
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.manifests.versions import PackageSpec
 from rebrief.parsers.ownership import (
@@ -53,6 +54,7 @@ class ReportSummary(TypedDict):
     files_scanned: int
     files_total: int
     token_stats: TokenStats
+    doc_drift: DocDriftReport
 
 
 class ReportTechStack(TypedDict):
@@ -133,6 +135,7 @@ class ReportGenerator:
         skip_vulnerability_check: bool = False,
         ownership: OwnershipResult | None = None,
         no_blame: bool = False,
+        doc_drift: DocDriftReport | None = None,
     ) -> None:
         self._repo_path = Path(repo_path)
         self._stack = stack
@@ -155,6 +158,7 @@ class ReportGenerator:
             "skip_reason": "disabled via --no-blame" if no_blame else None,
         }
         self._no_blame = no_blame
+        self._doc_drift = doc_drift or empty_doc_drift_report()
 
     @property
     def stack_packages(self) -> list[PackageSpec]:
@@ -172,6 +176,7 @@ class ReportGenerator:
             self._section_stack(),
             self._section_timeline(),
             self._section_risks(),
+            self._section_doc_drift(),
             self._section_checklist(),
         ]
         return "\n\n".join(sections) + "\n"
@@ -198,6 +203,20 @@ class ReportGenerator:
         stats = payload["summary"]["token_stats"]
         _xml_text(summary, "languages_count", payload["summary"]["languages_count"])
         _xml_text(summary, "risks_count", payload["summary"]["risks_count"])
+        doc_drift = payload["summary"]["doc_drift"]
+        _xml_text(summary, "freshness_score", doc_drift["freshness_score"])
+        _xml_text(summary, "freshness_label", doc_drift["freshness_label"])
+        drift_items = ET.SubElement(summary, "doc_drift_items")
+        for item in doc_drift["items"]:
+            drift = ET.SubElement(
+                drift_items,
+                "item",
+                severity=item["severity"].upper(),
+                confidence=item["confidence"],
+                kind=item["kind"],
+                source=item["source"],
+            )
+            drift.text = item["message"]
         _xml_text(summary, "raw_tokens", stats["raw_codebase_tokens"])
         _xml_text(summary, "brief_tokens", stats["brief_tokens"])
         _xml_text(summary, "savings_percentage", f"{stats['savings_percentage']:.2f}")
@@ -303,6 +322,7 @@ class ReportGenerator:
                 "files_scanned": files_scanned,
                 "files_total": files_total,
                 "token_stats": self.token_stats(),
+                "doc_drift": self._doc_drift,
             },
             "tech_stack": {
                 "languages": list(self._stack["languages"]),
@@ -689,13 +709,38 @@ class ReportGenerator:
                     f"{entry['file']} ({entry['count']} edits in 30 days)."
                 )
 
+        for item in self._doc_drift["items"]:
+            if item["severity"] != "warning":
+                continue
+            items.append(f"Update documentation: {item['message']}")
+
         if not items:
             items.append("Review the sections above and validate the project setup.")
 
         return items
 
+    def _section_doc_drift(self) -> str:
+        drift = self._doc_drift
+        lines = [
+            "## 6. 📉 Documentation Freshness & Drift",
+            (
+                f"Freshness Score: {drift['freshness_score']}% "
+                f"({drift['freshness_label']})"
+            ),
+        ]
+        if drift["items"]:
+            for item in drift["items"]:
+                severity_label = item["severity"].upper()
+                lines.append(
+                    f"- [{severity_label}] [Confidence: {item['confidence']}] "
+                    f"{item['message']}"
+                )
+        else:
+            lines.append("- No documentation drift detected.")
+        return "\n".join(lines)
+
     def _section_checklist(self) -> str:
-        lines = ['## 5. Developer Checklist ("Where to Start")']
+        lines = ['## 7. Developer Checklist ("Where to Start")']
         lines.extend(
             f"{index}. {item}" for index, item in enumerate(self._checklist_items(), start=1)
         )

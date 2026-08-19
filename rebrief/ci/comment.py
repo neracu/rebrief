@@ -12,7 +12,8 @@ SECTION_OVERVIEW = "## 1. Project Overview (Executive Summary)"
 SECTION_STACK = "## 2. Technology Stack and Dependencies"
 SECTION_TIMELINE = "## 3. Solution Timeline (Git History)"
 SECTION_RISKS = "## 4. Risk Map (AI Debt & Security)"
-SECTION_CHECKLIST = '## 5. Developer Checklist ("Where to Start")'
+SECTION_DOC_DRIFT = "## 6. 📉 Documentation Freshness & Drift"
+SECTION_CHECKLIST = '## 7. Developer Checklist ("Where to Start")'
 
 CRITICAL_HEADING = "### [CRITICAL]"
 WARNING_HEADING = "### [WARNING]"
@@ -125,6 +126,7 @@ def build_pr_comment(
     stack = sections.get(SECTION_STACK, "")
     timeline = sections.get(SECTION_TIMELINE, "")
     risks = sections.get(SECTION_RISKS, "")
+    doc_drift = sections.get(SECTION_DOC_DRIFT, "")
     checklist = sections.get(SECTION_CHECKLIST, "")
 
     meta_parts: list[str] = []
@@ -144,7 +146,9 @@ def build_pr_comment(
     if meta_line:
         parts.append(f"\n<sub>{meta_line}</sub>\n")
 
-    primary = "\n\n".join(part for part in (overview, risks, checklist) if part)
+    primary = "\n\n".join(
+        part for part in (overview, risks, doc_drift, checklist) if part
+    )
     parts.append(primary)
 
     collapsible = _build_collapsible(stack, timeline)

@@ -37,7 +37,11 @@ SAMPLE_REPORT_WITH_RISKS = """\
 ### [INFO]
 - TODO in app.py:10
 
-## 5. Developer Checklist ("Where to Start")
+## 6. 📉 Documentation Freshness & Drift
+Freshness Score: 100% (Fresh)
+- No documentation drift detected.
+
+## 7. Developer Checklist ("Where to Start")
 1. Review and rotate hard-coded credentials in config.py (line 3).
 2. Add a `tests/` directory and cover critical paths.
 """
@@ -67,7 +71,11 @@ SAMPLE_REPORT_NO_RISKS = """\
 ### [INFO]
 - None detected.
 
-## 5. Developer Checklist ("Where to Start")
+## 6. 📉 Documentation Freshness & Drift
+Freshness Score: 100% (Fresh)
+- No documentation drift detected.
+
+## 7. Developer Checklist ("Where to Start")
 1. Review the sections above and validate the project setup.
 """
 
@@ -109,7 +117,8 @@ def test_build_pr_comment_includes_marker_and_key_sections():
     assert "## rebrief scan report" in comment
     assert "## 1. Project Overview" in comment
     assert "## 4. Risk Map" in comment
-    assert '## 5. Developer Checklist ("Where to Start")' in comment
+    assert "## 6. 📉 Documentation Freshness & Drift" in comment
+    assert '## 7. Developer Checklist ("Where to Start")' in comment
     assert "Hard-coded secret in config.py:3" in comment
     assert "<details>" in comment
     assert "Technology Stack & Git Timeline" in comment

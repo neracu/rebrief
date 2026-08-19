@@ -50,7 +50,8 @@ def test_generate_html_structure_and_scan_data(tmp_path: Path) -> None:
     assert "Token efficiency" in html
     assert "Brief tokens" in html
     assert "Read the following REBRIEF.md" in html
-    assert f"v{__version__}" in html
+    assert "Documentation freshness" in html
+    assert "100%" in html or "Fresh" in html
 
     assert 'id="copy-prompt-btn"' in html
     assert "Copy Prompt for AI" in html

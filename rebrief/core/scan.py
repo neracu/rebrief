@@ -9,6 +9,7 @@ from rebrief.core.diff import DiffScope
 from rebrief.core.reporter import ReportGenerator
 from rebrief.core.tokens import count_repo_tokens
 from rebrief.core.vulnerabilities import check_vulnerabilities
+from rebrief.parsers.freshness import FreshnessParser
 from rebrief.parsers.git_log import GitLogParser
 from rebrief.parsers.ownership import OwnershipParser
 from rebrief.parsers.risks import RisksParser
@@ -40,6 +41,7 @@ def run_scan(
     with step("[1/4] Parsing repository manifests & tech stack..."):
         stack = StackParser(repo, paths=paths).parse()
         rules = RulesParser(repo).parse()
+        doc_drift = FreshnessParser(repo, stack).parse()
 
     with step("[2/4] Analyzing git history & hotspots..."):
         git_kwargs = {
@@ -87,4 +89,5 @@ def run_scan(
             skip_vulnerability_check=skip_vulnerability_check,
             ownership=ownership,
             no_blame=no_blame,
+            doc_drift=doc_drift,
         )

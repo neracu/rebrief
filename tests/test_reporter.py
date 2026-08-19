@@ -69,7 +69,8 @@ def test_generate_includes_all_sections(tmp_path: Path) -> None:
     assert "## 2. Technology Stack and Dependencies" in report
     assert "## 3. Solution Timeline (Git History)" in report
     assert "## 4. Risk Map (AI Debt & Security)" in report
-    assert '## 5. Developer Checklist ("Where to Start")' in report
+    assert "## 6. 📉 Documentation Freshness & Drift" in report
+    assert '## 7. Developer Checklist ("Where to Start")' in report
 
 
 def test_generate_critical_warning_info(tmp_path: Path) -> None:
@@ -245,6 +246,14 @@ def test_to_dict_structure(tmp_path: Path) -> None:
         "files_scanned",
         "files_total",
         "token_stats",
+        "doc_drift",
+    }
+    assert set(payload["summary"]["doc_drift"].keys()) == {
+        "freshness_score",
+        "freshness_label",
+        "scanned_files",
+        "components",
+        "items",
     }
     assert set(payload["tech_stack"].keys()) == {
         "languages",
@@ -561,6 +570,51 @@ def test_write_xml_report_creates_file(tmp_path: Path) -> None:
     root = ET.fromstring(xml_text)
     assert root.attrib["version"] == __version__
     assert root.find("tech_stack/frameworks/framework").text == "Django"
+
+
+def test_generate_doc_drift_section(tmp_path: Path) -> None:
+    from rebrief.parsers.freshness import DocDriftReport
+
+    stack, rules, git_log, risks = make_report_data()
+    doc_drift: DocDriftReport = {
+        "freshness_score": 82,
+        "freshness_label": "Needs Review",
+        "scanned_files": ["README.md"],
+        "components": {
+            "path_ratio": 1.0,
+            "stack_ratio": 0.5,
+            "env_ratio": 1.0,
+            "recency_ratio": 1.0,
+        },
+        "items": [
+            {
+                "severity": "warning",
+                "confidence": "HIGH",
+                "kind": "stack",
+                "source": "README.md",
+                "message": (
+                    'README.md references "Vue" but project depends on "React"'
+                ),
+            }
+        ],
+    }
+    generator = ReportGenerator(
+        str(tmp_path / "demo-repo"),
+        stack,
+        rules,
+        git_log,
+        risks,
+        doc_drift=doc_drift,
+    )
+    report = generator.generate()
+
+    assert "## 6. 📉 Documentation Freshness & Drift" in report
+    assert "Freshness Score: 82% (Needs Review)" in report
+    assert (
+        '[WARNING] [Confidence: HIGH] README.md references "Vue" '
+        'but project depends on "React"'
+    ) in report
+    assert "Update documentation:" in report
 
 
 def test_min_confidence_filters_low_info_items(tmp_path: Path) -> None:

@@ -408,6 +408,27 @@ def _checklist(payload: ReportPayload) -> str:
     return '<ol class="checklist">' + "".join(f"<li>{_e(item)}</li>" for item in items) + "</ol>"
 
 
+def _doc_drift(payload: ReportPayload) -> str:
+    drift = payload["summary"]["doc_drift"]
+    score_line = (
+        f'<p class="freshness-score"><strong>{drift["freshness_score"]}%</strong> '
+        f'({_e(drift["freshness_label"])})</p>'
+    )
+    if not drift["items"]:
+        return score_line + '<p class="empty">No documentation drift detected.</p>'
+    items_html = "".join(
+        '<article class="risk-card" '
+        f'data-severity="{_e(item["severity"].upper())}" '
+        f'data-confidence="{_e(item["confidence"])}">'
+        f'<span class="sev sev-{_e(item["severity"])}">{_e(item["severity"].upper())}</span>'
+        f'<div>{_e(item["message"])}</div>'
+        f'<span class="conf">{_e(item["confidence"])}</span>'
+        "</article>"
+        for item in drift["items"]
+    )
+    return score_line + f'<div class="risk-list">{items_html}</div>'
+
+
 def render_html(payload: ReportPayload, markdown: str, repo_name: str) -> str:
     stats = payload["summary"]["token_stats"]
     raw = stats["raw_codebase_tokens"]
@@ -496,6 +517,10 @@ def render_html(payload: ReportPayload, markdown: str, repo_name: str) -> str:
   <section class="card">
     <h2>Code ownership</h2>
     {_ownership_table(payload)}
+  </section>
+  <section class="card">
+    <h2>Documentation freshness</h2>
+    {_doc_drift(payload)}
   </section>
   <section class="card">
     <h2>Developer checklist</h2>

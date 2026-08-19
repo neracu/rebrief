@@ -574,6 +574,12 @@ class ScanUI:
         table.add_row("Frameworks", _join_or_none(list(stack["frameworks"])))
         table.add_row("Manifests", _join_or_none(list(stack["manifests"])))
 
+        doc_drift = summary["doc_drift"]
+        table.add_row(
+            "Doc freshness",
+            f"{doc_drift['freshness_score']}% ({doc_drift['freshness_label']})",
+        )
+
         context_files = list(summary["ai_instruction_files"])
         if context_files:
             table.add_row(

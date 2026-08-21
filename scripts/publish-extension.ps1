@@ -20,7 +20,7 @@ try {
         Write-Host "Published successfully."
     }
     else {
-        Write-Host "VSCE_PAT not set — installing locally into Cursor instead."
+        Write-Host "VSCE_PAT not set - installing locally into Cursor instead."
         $cursorCmd = Get-Command cursor -ErrorAction SilentlyContinue
         if ($cursorCmd) {
             & cursor --install-extension $vsix.FullName --force

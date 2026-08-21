@@ -168,7 +168,7 @@ export function activate(context: vscode.ExtensionContext): void {
     100,
   );
   statusBarItem.command = "rebrief.scanWorkspace";
-  statusBarItem.text = "$(zap) Rebrief";
+  statusBarItem.text = "Rebrief";
   statusBarItem.tooltip = "Scan workspace with Rebrief";
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);

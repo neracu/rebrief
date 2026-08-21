@@ -80,7 +80,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function sidebarHtml(cache: ScanCache | null): string {
+function sidebarHtml(cache: ScanCache | null, logoUri?: string): string {
   const hasScan = cache !== null;
   const repo = hasScan ? escapeHtml(cache.summary.repoName) : "No scan yet";
   const folder = hasScan ? escapeHtml(cache.summary.folder) : "";
@@ -120,6 +120,18 @@ function sidebarHtml(cache: ScanCache | null): string {
       margin: 0 0 4px;
       font-size: 16px;
       font-weight: 600;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .header img {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      flex-shrink: 0;
     }
     .muted { color: var(--muted); font-size: 12px; word-break: break-all; }
     .stats {
@@ -166,7 +178,10 @@ function sidebarHtml(cache: ScanCache | null): string {
   </style>
 </head>
 <body>
-  <h1>${repo}</h1>
+  <div class="header">
+    ${logoUri ? `<img src="${logoUri}" alt="Rebrief">` : ""}
+    <h1>${repo}</h1>
+  </div>
   ${folder ? `<div class="muted">${folder}</div>` : ""}
   ${scannedAt ? `<div class="muted">Last scan: ${scannedAt}</div>` : ""}
   ${
@@ -208,6 +223,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly onCopyPrompt: () => Promise<void>,
   ) {}
 
+  private logoUri?: vscode.Uri;
+
   public setCache(cache: ScanCache | null): void {
     this.cache = cache;
     this.refresh();
@@ -217,7 +234,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    this.view.webview.html = sidebarHtml(this.cache);
+    const logoSrc = this.logoUri
+      ? this.view.webview.asWebviewUri(this.logoUri).toString()
+      : undefined;
+    this.view.webview.html = sidebarHtml(this.cache, logoSrc);
   }
 
   resolveWebviewView(
@@ -226,6 +246,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken,
   ): void {
     this.view = webviewView;
+    this.logoUri = vscode.Uri.joinPath(
+      this.context.extensionUri,
+      "media",
+      "logo-32.png",
+    );
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri],

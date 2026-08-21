@@ -2,9 +2,10 @@
   "name": "rebrief",
   "displayName": "Rebrief",
   "description": "Scan repositories and generate AI-ready briefing dashboards from the rebrief CLI.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "neracu",
   "license": "MIT",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/neracu/rebrief.git",
@@ -56,7 +57,7 @@
         {
           "id": "rebrief",
           "title": "Rebrief",
-          "icon": "media/icon.svg"
+          "icon": "media/icon-24.png"
         }
       ]
     },
@@ -124,6 +125,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
     "package": "vsce package",
+    "publish": "vsce publish",
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {

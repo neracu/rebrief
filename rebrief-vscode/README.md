@@ -4,8 +4,8 @@ Scan any workspace with the [rebrief](https://github.com/neracu/rebrief) CLI and
 
 ## Features
 
-- Status bar `⚡ Rebrief` for one-click workspace scans
-- Activity bar sidebar with risk summary and quick actions
+- Status bar **Rebrief** for one-click workspace scans
+- Activity bar sidebar with branded logo, risk summary, and quick actions
 - Explorer context menu: **Rebrief this folder**
 - Interactive dashboard webview with VS Code theme integration
 - **Copy AI Prompt** for Cursor, Claude Code, or Windsurf
@@ -61,7 +61,19 @@ Press **F5** in VS Code to launch an Extension Development Host.
 npm run package
 ```
 
-Produces `rebrief-0.3.0.vsix` for local install (`Extensions: Install from VSIX...`) or Marketplace upload via `vsce publish`.
+Produces `rebrief-0.3.1.vsix` for local install (`Extensions: Install from VSIX...`).
+
+### Publish to Marketplace
+
+```bash
+# one-time: create PAT at dev.azure.com (Marketplace → Manage scope)
+export VSCE_PAT=your_token   # PowerShell: $env:VSCE_PAT = "your_token"
+npm run publish
+```
+
+Or from the repo root: `.\scripts\publish-extension.ps1` (installs locally if `VSCE_PAT` is unset).
+
+GitHub Actions: add repository secret `VSCE_PAT`, then run the **Publish VS Code Extension** workflow.
 
 ## License
 

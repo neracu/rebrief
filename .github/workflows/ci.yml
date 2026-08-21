@@ -28,3 +28,5 @@ jobs:
         working-directory: rebrief-vscode
       - run: npm run compile
         working-directory: rebrief-vscode
+      - run: npm run package
+        working-directory: rebrief-vscode

@@ -23,6 +23,23 @@ def test_default_dirs_always_ignored(tmp_path: Path) -> None:
     assert matcher.should_prune_dir(".rebrief", "") is True
 
 
+def test_root_lib_ignored_nested_src_lib_not(tmp_path: Path) -> None:
+    matcher = IgnoreMatcher(tmp_path)
+
+    assert matcher.should_prune_dir("lib", "") is True
+    assert matcher.should_prune_dir("lib", "src") is False
+    assert matcher.is_ignored("lib/dep/package.json", is_dir=False) is True
+    assert matcher.is_ignored("src/lib/pkg/package.json", is_dir=False) is False
+
+
+def test_vendored_and_build_dirs_ignored(tmp_path: Path) -> None:
+    matcher = IgnoreMatcher(tmp_path)
+
+    for dirname in ("vendor", "third_party", "out", "target"):
+        assert matcher.should_prune_dir(dirname, "") is True
+        assert matcher.is_ignored(f"{dirname}/nested/package.json", is_dir=False) is True
+
+
 def test_rebriefignore_custom_pattern(tmp_path: Path) -> None:
     (tmp_path / REBRIEFIGNORE_FILENAME).write_text("vendor/\n", encoding="utf-8")
     matcher = IgnoreMatcher(tmp_path)
@@ -61,6 +78,10 @@ def test_ensure_rebriefignore_creates_file(tmp_path: Path) -> None:
     content = (tmp_path / REBRIEFIGNORE_FILENAME).read_text(encoding="utf-8")
     assert content == DEFAULT_REBRIEFIGNORE_CONTENT
     assert "node_modules/" in content
+    assert "lib/" in content
+    assert "third_party/" in content
+    assert "out/" in content
+    assert "target/" in content
     assert ".rebrief/" in content
     assert "# Dependencies and package managers" in content
 

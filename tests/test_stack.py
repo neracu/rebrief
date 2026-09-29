@@ -455,6 +455,45 @@ def test_foundry_toml_and_solidity(tmp_path: Path) -> None:
     assert result["is_empty"] is False
 
 
+def test_foundry_skips_vendored_lib_package_json(tmp_path: Path) -> None:
+    (tmp_path / "foundry.toml").write_text(
+        '[profile.default]\nsrc = "src"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "Contract.sol").write_text(
+        "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n",
+        encoding="utf-8",
+    )
+    vendored = tmp_path / "lib" / "some-lib"
+    vendored.mkdir(parents=True)
+    (vendored / "package.json").write_text(
+        '{"dependencies": {"react": "^18.0.0"}}',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["Solidity"]
+    assert "JavaScript/TypeScript" not in result["languages"]
+    assert result["frameworks"] == ["Foundry"]
+    assert "React" not in result["frameworks"]
+    assert result["manifests"] == ["foundry.toml"]
+
+
+def test_skips_vendor_package_json_without_rebriefignore(tmp_path: Path) -> None:
+    vendor = tmp_path / "vendor" / "nested"
+    vendor.mkdir(parents=True)
+    (vendor / "package.json").write_text(
+        '{"dependencies": {"react": "^18.0.0"}}',
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["manifests"] == []
+    assert "React" not in result["frameworks"]
+
+
 def test_solidity_extension_only(tmp_path: Path) -> None:
     (tmp_path / "Foo.sol").write_text(
         "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n",

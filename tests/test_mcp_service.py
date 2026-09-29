@@ -48,6 +48,25 @@ def test_get_tech_stack_foundry_solidity(tmp_path: Path) -> None:
     assert "foundry.toml" in stack["manifests"]
 
 
+def test_get_tech_stack_foundry_ignores_lib_package_json(tmp_path: Path) -> None:
+    (tmp_path / "foundry.toml").write_text('[profile.default]\n', encoding="utf-8")
+    (tmp_path / "Contract.sol").write_text(
+        "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n",
+        encoding="utf-8",
+    )
+    vendored = tmp_path / "lib" / "openzeppelin-contracts"
+    vendored.mkdir(parents=True)
+    (vendored / "package.json").write_text(
+        '{"dependencies": {"react": "^18.0.0"}}',
+        encoding="utf-8",
+    )
+    stack = ScanService().get_tech_stack(str(tmp_path))
+    assert stack["languages"] == ["Solidity"]
+    assert "JavaScript/TypeScript" not in stack["languages"]
+    assert stack["frameworks"] == ["Foundry"]
+    assert stack["manifests"] == ["foundry.toml"]
+
+
 def test_get_risk_map_shape_and_confidence_filter(tmp_path: Path) -> None:
     _seed_repo(tmp_path)
     service = ScanService()

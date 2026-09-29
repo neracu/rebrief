@@ -6,6 +6,8 @@ from pathlib import Path
 
 REBRIEFIGNORE_FILENAME = ".rebriefignore"
 
+ROOT_ONLY_IGNORE_DIRS: frozenset[str] = frozenset({"lib"})
+
 DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset(
     {
         ".git",
@@ -19,8 +21,12 @@ DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset(
         "dist",
         "env",
         "node_modules",
+        "out",
         "site-packages",
         "staticfiles",
+        "target",
+        "third_party",
+        "vendor",
         "venv",
     }
 )
@@ -32,6 +38,10 @@ DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     "static/vendor/",
     "assets/vendor/",
     "site-packages/",
+    "vendor/",
+    "third_party/",
+    "out/",
+    "target/",
     "venv/",
     ".venv/",
     "env/",
@@ -50,10 +60,14 @@ DEFAULT_REBRIEFIGNORE_CONTENT = """\
 # Dependencies and package managers
 node_modules/
 vendor/
+lib/
+third_party/
 
 # Build outputs
 dist/
 build/
+out/
+target/
 .next/
 .turbo/
 
@@ -134,6 +148,13 @@ class IgnoreMatcher:
         parts = [part for part in normalized.split("/") if part]
         return any(part in DEFAULT_IGNORE_DIRS for part in parts)
 
+    def _matches_root_only_dirs(self, relative: str) -> bool:
+        normalized = self._normalize_relative(relative)
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            return False
+        return parts[0] in ROOT_ONLY_IGNORE_DIRS
+
     def _matches_default_patterns(self, relative: str) -> bool:
         normalized = self._normalize_relative(relative)
         prefixed = f"{normalized}/" if normalized else ""
@@ -166,10 +187,14 @@ class IgnoreMatcher:
     def is_ignored(self, relative: str, *, is_dir: bool) -> bool:
         if self._matches_default_dirs(relative):
             return True
+        if self._matches_root_only_dirs(relative):
+            return True
         if self._matches_default_patterns(relative):
             return True
         return self._matches_supplemental_pattern(relative, is_dir=is_dir)
 
     def should_prune_dir(self, dir_name: str, parent_relative: str) -> bool:
+        if dir_name in ROOT_ONLY_IGNORE_DIRS and not parent_relative.strip("/"):
+            return True
         relative = f"{parent_relative}/{dir_name}".strip("/")
         return self.is_ignored(relative, is_dir=True)

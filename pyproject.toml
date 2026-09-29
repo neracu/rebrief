@@ -54,7 +54,9 @@ exclude = ["tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not integration'"
 markers = [
+    "integration: clones remote repositories (network + git required)",
     "osv_network: tests that exercise the OSV client with mocked transport",
     "docker: tests that require the Docker CLI and build/run container images",
 ]

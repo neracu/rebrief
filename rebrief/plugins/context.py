@@ -11,6 +11,7 @@ from rebrief.plugins.base import PluginScanSettings, ScanContext
 from rebrief.plugins.builtin._helpers import (
     BINARY_EXTENSIONS,
     MANIFEST_JSON_FILES,
+    SECRET_SKIP_EXTENSIONS,
     SKIP_EXTENSIONS,
     SKIP_NAME_SUFFIXES,
 )
@@ -28,6 +29,8 @@ def _is_skippable_file(
     relative: str,
     filename: str,
     ignore_matcher: IgnoreMatcher,
+    *,
+    for_secrets: bool = False,
 ) -> bool:
     if ignore_matcher.is_ignored(relative, is_dir=False):
         return True
@@ -37,13 +40,15 @@ def _is_skippable_file(
         return True
 
     suffix = Path(filename).suffix.lower()
-    if suffix in SKIP_EXTENSIONS:
+    skip_extensions = SECRET_SKIP_EXTENSIONS if for_secrets else SKIP_EXTENSIONS
+    if suffix in skip_extensions:
         return True
 
-    if suffix == ".json" and filename not in MANIFEST_JSON_FILES:
-        return True
-
-    return False
+    return (
+        not for_secrets
+        and suffix == ".json"
+        and filename not in MANIFEST_JSON_FILES
+    )
 
 
 def _is_binary(path: Path) -> bool:
@@ -59,11 +64,12 @@ def _is_binary(path: Path) -> bool:
     return b"\x00" in chunk
 
 
-def iter_text_files(
+def _iter_repo_files(
     repo_path: Path,
     *,
     paths: Sequence[str] | None,
     extra_ignore_patterns: Sequence[str],
+    for_secrets: bool,
 ) -> Iterator[Path]:
     ignore_matcher = IgnoreMatcher(str(repo_path), extra_patterns=extra_ignore_patterns)
     path_set = (
@@ -75,7 +81,9 @@ def iter_text_files(
             file_path = repo_path / relative
             if not file_path.is_file():
                 continue
-            if _is_skippable_file(relative, file_path.name, ignore_matcher):
+            if _is_skippable_file(
+                relative, file_path.name, ignore_matcher, for_secrets=for_secrets
+            ):
                 continue
             if _is_binary(file_path):
                 continue
@@ -100,12 +108,42 @@ def iter_text_files(
 
             if ignore_matcher.is_ignored(relative_file, is_dir=False):
                 continue
-            if _is_skippable_file(relative_file, filename, ignore_matcher):
+            if _is_skippable_file(
+                relative_file, filename, ignore_matcher, for_secrets=for_secrets
+            ):
                 continue
             if _is_binary(file_path):
                 continue
 
             yield file_path
+
+
+def iter_text_files(
+    repo_path: Path,
+    *,
+    paths: Sequence[str] | None,
+    extra_ignore_patterns: Sequence[str],
+) -> Iterator[Path]:
+    yield from _iter_repo_files(
+        repo_path,
+        paths=paths,
+        extra_ignore_patterns=extra_ignore_patterns,
+        for_secrets=False,
+    )
+
+
+def iter_secret_scan_files(
+    repo_path: Path,
+    *,
+    paths: Sequence[str] | None,
+    extra_ignore_patterns: Sequence[str],
+) -> Iterator[Path]:
+    yield from _iter_repo_files(
+        repo_path,
+        paths=paths,
+        extra_ignore_patterns=extra_ignore_patterns,
+        for_secrets=True,
+    )
 
 
 def _pattern_pairs(

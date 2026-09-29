@@ -6,7 +6,7 @@ import re
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from rebrief.core.confidence import Confidence
 
@@ -108,7 +108,25 @@ MANIFEST_JSON_FILES: frozenset[str] = frozenset(
     }
 )
 SKIP_EXTENSIONS: frozenset[str] = frozenset({".map", ".md"})
+SECRET_SKIP_EXTENSIONS: frozenset[str] = frozenset({".map"})
 SKIP_NAME_SUFFIXES: tuple[str, ...] = (".min.js", ".min.css")
+
+EVM_PRIVATE_KEY_RE = re.compile(r"\b(0x)?[a-fA-F0-9]{64}\b")
+KNOWN_EVM_TEST_PRIVATE_KEYS: frozenset[str] = frozenset(
+    {
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+        "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+        "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+        "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+        "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+        "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+        "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+    }
+)
+SecretKind = Literal["default", "evm_public", "evm_private"]
 
 
 class MarkerFinding(TypedDict):
@@ -122,6 +140,7 @@ class SecretFinding(TypedDict):
     file: str
     line: int
     confidence: str
+    kind: NotRequired[SecretKind]
 
 
 class DependencyConflict(TypedDict):
@@ -234,12 +253,78 @@ def line_secret_confidence(
     return best
 
 
+def _normalize_evm_private_key(raw: str) -> str:
+    lowered = raw.lower()
+    if lowered.startswith("0x"):
+        return lowered
+    return f"0x{lowered}"
+
+
+def find_evm_private_keys_on_line(line: str) -> list[tuple[str, bool]]:
+    findings: list[tuple[str, bool]] = []
+    for match in EVM_PRIVATE_KEY_RE.finditer(line):
+        normalized = _normalize_evm_private_key(match.group(0))
+        is_known = normalized in KNOWN_EVM_TEST_PRIVATE_KEYS
+        findings.append((normalized, is_known))
+    return findings
+
+
+def _evm_secret_kind_on_line(line: str) -> SecretKind | None:
+    matches = find_evm_private_keys_on_line(line)
+    if not matches:
+        return None
+    if any(not is_known for _, is_known in matches):
+        return "evm_private"
+    return "evm_public"
+
+
+def _secret_finding_for_line(
+    relative: str,
+    line_number: int,
+    line: str,
+    *,
+    entropy_cutoff: float,
+    custom_patterns: Sequence[tuple[re.Pattern[str], Confidence]],
+) -> SecretFinding | None:
+    evm_kind = _evm_secret_kind_on_line(line)
+    credential_confidence = line_secret_confidence(
+        line,
+        relative,
+        entropy_cutoff=entropy_cutoff,
+        custom_patterns=custom_patterns,
+    )
+
+    if evm_kind == "evm_private":
+        return {
+            "file": relative,
+            "line": line_number,
+            "confidence": Confidence.HIGH.value,
+            "kind": "evm_private",
+        }
+    if evm_kind == "evm_public":
+        return {
+            "file": relative,
+            "line": line_number,
+            "confidence": Confidence.HIGH.value,
+            "kind": "evm_public",
+        }
+    if credential_confidence is not None:
+        return {
+            "file": relative,
+            "line": line_number,
+            "confidence": credential_confidence.value,
+        }
+    return None
+
+
 def scan_file_markers_and_secrets(
     path: Path,
     repo_path: Path,
     *,
     entropy_cutoff: float,
     custom_patterns: Sequence[tuple[re.Pattern[str], Confidence]],
+    scan_markers: bool = True,
+    scan_secrets: bool = True,
 ) -> tuple[list[MarkerFinding], list[SecretFinding]]:
     relative = path.relative_to(repo_path).as_posix()
     is_csv = Path(relative).suffix.lower() == ".csv"
@@ -252,32 +337,28 @@ def scan_file_markers_and_secrets(
         return markers, secrets
 
     for line_number, line in enumerate(lines, start=1):
-        marker_match = MARKER_RE.search(line)
-        if marker_match:
-            markers.append(
-                {
-                    "file": relative,
-                    "line": line_number,
-                    "marker": marker_match.group(1),
-                    "confidence": Confidence.LOW.value,
-                }
-            )
-
-        if not is_csv:
-            secret_confidence = line_secret_confidence(
-                line,
-                relative,
-                entropy_cutoff=entropy_cutoff,
-                custom_patterns=custom_patterns,
-            )
-            if secret_confidence is not None:
-                secrets.append(
+        if scan_markers:
+            marker_match = MARKER_RE.search(line)
+            if marker_match:
+                markers.append(
                     {
                         "file": relative,
                         "line": line_number,
-                        "confidence": secret_confidence.value,
+                        "marker": marker_match.group(1),
+                        "confidence": Confidence.LOW.value,
                     }
                 )
+
+        if scan_secrets and not is_csv:
+            finding = _secret_finding_for_line(
+                relative,
+                line_number,
+                line,
+                entropy_cutoff=entropy_cutoff,
+                custom_patterns=custom_patterns,
+            )
+            if finding is not None:
+                secrets.append(finding)
 
     return markers, secrets
 
@@ -382,6 +463,22 @@ def _build_conflicts(
 
 
 def secret_finding_to_risk_item(entry: SecretFinding) -> dict[str, str]:
+    kind = entry.get("kind", "default")
+    if kind == "evm_public":
+        return {
+            "severity": "warning",
+            "message": (
+                f"Hard-coded secret in {entry['file']}:{entry['line']} "
+                "[Test / Public Anvil Key]"
+            ),
+            "confidence": entry["confidence"],
+        }
+    if kind == "evm_private":
+        return {
+            "severity": "critical",
+            "message": f"Hard-coded secret in {entry['file']}:{entry['line']}",
+            "confidence": entry["confidence"],
+        }
     if is_test_or_fixture_path(entry["file"]):
         return {
             "severity": "warning",

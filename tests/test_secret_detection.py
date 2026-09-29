@@ -2,14 +2,20 @@ from pathlib import Path
 
 import pytest
 
-from rebrief.core.confidence import Confidence
 from rebrief.core.reporter import ReportGenerator, collected_items_from_risk_report
 from rebrief.parsers.git_log import GitLogResult
 from rebrief.parsers.risks import RisksParser, line_secret_confidence
 from rebrief.parsers.stack import StackResult
+from rebrief.plugins.builtin._helpers import secret_finding_to_risk_item
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "secrets"
 DEFAULT_RELATIVE_PATH = "app/config.py"
+ANVIL_DEFAULT_PRIVATE_KEY = (
+    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+)
+UNKNOWN_EVM_PRIVATE_KEY = (
+    "0x1111111111111111111111111111111111111111111111111111111111111111"
+)
 
 EXPECTED_FINDINGS = [
     {"file": "aws_config.py", "line": 2, "confidence": "HIGH"},
@@ -158,6 +164,76 @@ def test_secret_pattern_detection(
     confidence = line_secret_confidence(source_line, relative_path)
 
     assert (confidence is not None) is should_detect, label
+
+
+def test_evm_anvil_key_in_markdown_detected(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "README.md").write_text(
+        f"# Setup\n\nDefault signer private key: {ANVIL_DEFAULT_PRIVATE_KEY}\n",
+        encoding="utf-8",
+    )
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["secrets"] == [
+        {
+            "file": "README.md",
+            "line": 3,
+            "confidence": "HIGH",
+            "kind": "evm_public",
+        }
+    ]
+
+
+def test_evm_key_severity_in_report(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "README.md").write_text(
+        f"key: {ANVIL_DEFAULT_PRIVATE_KEY}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "notes.md").write_text(
+        f"key: {UNKNOWN_EVM_PRIVATE_KEY}\n",
+        encoding="utf-8",
+    )
+
+    risks = RisksParser(str(tmp_path)).parse()
+    stack: StackResult = {
+        "languages": [],
+        "manifests": [],
+        "frameworks": [],
+        "dependencies": [],
+        "is_empty": False,
+        "manifest_warnings": [],
+    }
+    git_log: GitLogResult = {
+        "commits": [],
+        "top_modified_files": [],
+        "status_message": None,
+    }
+    generator = ReportGenerator(
+        str(tmp_path),
+        stack,
+        {},
+        git_log,
+        collected_items_from_risk_report(risks),
+    )
+    payload = generator.to_dict()
+
+    anvil_message = (
+        "Hard-coded secret in README.md:1 [Test / Public Anvil Key]"
+    )
+    unknown_message = "Hard-coded secret in notes.md:1"
+
+    assert payload["risk_map"]["warning"] == [
+        {"message": anvil_message, "confidence": "HIGH"}
+    ]
+    assert payload["risk_map"]["critical"] == [
+        {"message": unknown_message, "confidence": "HIGH"}
+    ]
+
+    anvil_finding = secret_finding_to_risk_item(risks["secrets"][0])
+    assert anvil_finding["severity"] == "warning"
+    assert "[Test / Public Anvil Key]" in anvil_finding["message"]
 
 
 def test_secret_findings_in_critical_section() -> None:

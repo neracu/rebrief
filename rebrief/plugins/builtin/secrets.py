@@ -14,7 +14,7 @@ class SecretsDetector(BaseRiskDetector):
     def scan(self, context: ScanContext) -> list[RiskItem]:
         items: list[RiskItem] = []
         custom_patterns = context.settings.custom_secret_patterns
-        for file_path in context.iter_text_files():
+        for file_path in context.iter_secret_scan_files():
             _, secrets = scan_file_markers_and_secrets(
                 file_path,
                 context.repo_path,

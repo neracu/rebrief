@@ -17,7 +17,7 @@ from rebrief.plugins.builtin._helpers import (
     line_secret_confidence,
     scan_file_markers_and_secrets,
 )
-from rebrief.plugins.context import iter_text_files
+from rebrief.plugins.context import iter_secret_scan_files, iter_text_files
 
 TEST_DIRS: tuple[str, ...] = ("tests", "test", "__tests__")
 TEST_PATH_SEGMENTS: frozenset[str] = frozenset(
@@ -49,7 +49,9 @@ class RisksParser:
         self._entropy_cutoff = entropy_cutoff
         self._custom_patterns = tuple(custom_patterns)
         self._paths = (
-            {path.replace("\\", "/") for path in paths} if paths is not None else None
+            tuple(path.replace("\\", "/") for path in paths)
+            if paths is not None
+            else None
         )
 
     def parse(self) -> RiskReport:
@@ -60,13 +62,27 @@ class RisksParser:
             paths=self._paths,
             extra_ignore_patterns=self._extra_ignore_patterns,
         ):
-            file_markers, file_secrets = scan_file_markers_and_secrets(
+            file_markers, _ = scan_file_markers_and_secrets(
                 file_path,
                 self._repo_path,
                 entropy_cutoff=self._entropy_cutoff,
                 custom_patterns=self._custom_patterns,
+                scan_secrets=False,
             )
             markers.extend(file_markers)
+
+        for file_path in iter_secret_scan_files(
+            self._repo_path,
+            paths=self._paths,
+            extra_ignore_patterns=self._extra_ignore_patterns,
+        ):
+            _, file_secrets = scan_file_markers_and_secrets(
+                file_path,
+                self._repo_path,
+                entropy_cutoff=self._entropy_cutoff,
+                custom_patterns=self._custom_patterns,
+                scan_markers=False,
+            )
             secrets.extend(file_secrets)
 
         return {
@@ -76,7 +92,7 @@ class RisksParser:
             "dependency_conflicts": check_dependency_conflicts(
                 self._repo_path,
                 self._dependencies,
-                self._paths,
+                set(self._paths) if self._paths is not None else None,
             ),
         }
 

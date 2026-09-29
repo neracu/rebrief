@@ -47,6 +47,15 @@ class ScanContext:
             extra_ignore_patterns=self.settings.extra_ignore_patterns,
         )
 
+    def iter_secret_scan_files(self) -> Iterator[Path]:
+        from rebrief.plugins.context import iter_secret_scan_files
+
+        return iter_secret_scan_files(
+            self.repo_path,
+            paths=self.paths,
+            extra_ignore_patterns=self.settings.extra_ignore_patterns,
+        )
+
     def repo_root_files(self) -> list[str]:
         try:
             return sorted(entry.name for entry in self.repo_path.iterdir())

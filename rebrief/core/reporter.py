@@ -648,6 +648,16 @@ class ReportGenerator:
 
         for risk in self._filtered_risk_items():
             message = risk["message"]
+            if "[Test / Public Anvil Key]" in message:
+                location = message.removeprefix("Hard-coded secret in ").partition(
+                    " [Test / Public Anvil Key]"
+                )[0]
+                file_part, _, line_part = location.partition(":")
+                items.append(
+                    "Confirm the documented Anvil/Hardhat test key in "
+                    f"{file_part} (line {line_part}) is not used on mainnet."
+                )
+                continue
             if message.startswith("Hard-coded secret in "):
                 location = message.removeprefix("Hard-coded secret in ")
                 file_part, _, line_part = location.partition(":")

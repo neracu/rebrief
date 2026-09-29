@@ -170,6 +170,24 @@ def test_skips_static_vendor_markers(tmp_path: Path) -> None:
     assert result["markers"] == []
 
 
+def test_secret_scan_includes_markdown(tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    anvil_key = (
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    )
+    (tmp_path / "README.md").write_text(
+        f"Documented test key: {anvil_key}\n",
+        encoding="utf-8",
+    )
+
+    result = RisksParser(str(tmp_path)).parse()
+
+    assert result["markers"] == []
+    assert len(result["secrets"]) == 1
+    assert result["secrets"][0]["file"] == "README.md"
+    assert result["secrets"][0].get("kind") == "evm_public"
+
+
 def test_skips_min_js_and_md(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     src = tmp_path / "src"

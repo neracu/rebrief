@@ -24,6 +24,14 @@ FRAMEWORK_SIGNATURES: dict[str, str] = {
     "svelte.config.js": "Svelte",
     "remix.config.js": "Remix",
     "artisan": "Laravel",
+    "foundry.toml": "Foundry",
+    "hardhat.config.js": "Hardhat",
+    "hardhat.config.ts": "Hardhat",
+    "truffle-config.js": "Truffle",
+}
+
+EXTENSION_LANGUAGES: dict[str, str] = {
+    ".sol": "Solidity",
 }
 
 FRAMEWORK_DEPENDENCY_RULES: tuple[tuple[str, str], ...] = (
@@ -112,6 +120,7 @@ class StackParser:
                 for path in manifest_paths
                 if Path(path).name in MANIFEST_LANGUAGES
             }
+            | self._detect_extension_languages()
         )
         frameworks = sorted(
             self._detect_signature_frameworks(signature_paths)
@@ -169,6 +178,14 @@ class StackParser:
             found.append(file_path.relative_to(self._repo_path).as_posix())
 
         return sorted(set(found))
+
+    def _detect_extension_languages(self) -> set[str]:
+        languages: set[str] = set()
+        for file_path in self._walk_files():
+            language = EXTENSION_LANGUAGES.get(file_path.suffix.lower())
+            if language is not None:
+                languages.add(language)
+        return languages
 
     def _detect_signature_frameworks(self, signature_paths: list[str]) -> set[str]:
         frameworks: set[str] = set()

@@ -437,6 +437,53 @@ def test_no_false_positive_vue_router(tmp_path: Path) -> None:
     assert "Vue" not in result["frameworks"]
 
 
+def test_foundry_toml_and_solidity(tmp_path: Path) -> None:
+    (tmp_path / "foundry.toml").write_text(
+        '[profile.default]\nsrc = "src"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "Contract.sol").write_text(
+        "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n",
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["Solidity"]
+    assert result["frameworks"] == ["Foundry"]
+    assert result["manifests"] == ["foundry.toml"]
+    assert result["is_empty"] is False
+
+
+def test_solidity_extension_only(tmp_path: Path) -> None:
+    (tmp_path / "Foo.sol").write_text(
+        "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n",
+        encoding="utf-8",
+    )
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert result["languages"] == ["Solidity"]
+    assert result["frameworks"] == []
+    assert result["manifests"] == []
+
+
+def test_hardhat_config_signature(tmp_path: Path) -> None:
+    (tmp_path / "hardhat.config.ts").write_text("export default {}\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Hardhat" in result["frameworks"]
+
+
+def test_truffle_config_signature(tmp_path: Path) -> None:
+    (tmp_path / "truffle-config.js").write_text("module.exports = {}\n", encoding="utf-8")
+
+    result = StackParser(str(tmp_path)).parse()
+
+    assert "Truffle" in result["frameworks"]
+
+
 def test_multi_ecosystem_framework_detection(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text(
         '{"dependencies": {"react": "^18.0.0", "express": "^4.18.0"}}',

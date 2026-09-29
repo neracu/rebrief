@@ -26,6 +26,7 @@ MANIFEST_FILES: tuple[str, ...] = (
     "build.gradle.kts",
     "composer.json",
     "Gemfile",
+    "foundry.toml",
 )
 
 MANIFEST_LANGUAGES: dict[str, str] = {
@@ -40,6 +41,7 @@ MANIFEST_LANGUAGES: dict[str, str] = {
     "build.gradle.kts": "Kotlin",
     "composer.json": "PHP",
     "Gemfile": "Ruby",
+    "foundry.toml": "Solidity",
 }
 
 MANIFEST_PARSERS: dict[str, Callable[[Path], ManifestParseResult]] = {

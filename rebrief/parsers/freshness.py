@@ -207,6 +207,7 @@ LANGUAGE_TO_DISPLAY: dict[str, str] = {
     "Kotlin": "Kotlin",
     "PHP": "PHP",
     "Ruby": "Ruby",
+    "Solidity": "Solidity",
 }
 
 PATH_BACKTICK_RE = re.compile(r"`([^`\n]+)`")

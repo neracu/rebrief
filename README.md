@@ -3,6 +3,7 @@
 </p>
 <p align="center">
   <a href="https://pypi.org/project/rebrief/"><img src="https://img.shields.io/pypi/v/rebrief.svg" alt="PyPI version"></a>
+  <a href="https://pepy.tech/projects/rebrief"><img src="https://static.pepy.tech/personalized-badge/rebrief?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads" alt="PyPI Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
